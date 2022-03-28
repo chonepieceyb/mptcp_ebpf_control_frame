@@ -1,0 +1,6 @@
+build 
+bin
+tags
+config/if_attach_list.config
+*/__pycache__
+
