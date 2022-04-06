@@ -14,3 +14,7 @@ TC_PROG_PATH = os.path.join(SRC_BPF_KERN_PATH, "tc")
 BPF_OBJS_PATH = os.path.join(PROJECT_ROOT_PATH, "install", "bpf_kern_objs")
 BPF_TC_OBJS_PATH = os.path.join(BPF_OBJS_PATH, "tc")
 BPF_TC_BTF_OBJS_PATH = os.path.join(BPF_OBJS_PATH, "tc_btf")
+BPF_XDP_OBJS_PATH = os.path.join(BPF_OBJS_PATH, "xdp")
+
+BPF_VFS_PREFIX = "/sys/fs/bpf"
+TC_PIN_PREFIX = "tc/globals"

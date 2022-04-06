@@ -1,13 +1,11 @@
 #ifndef MPTCP_EBPF_CONTROL_FRAME_ERROR_H
 #define MPTCP_EBPF_CONTROL_FRAME_ERROR_H
 
-#define CREATE_SUB_WITHOUT_TOKEN        1001
-#define CREATE_SUB_FLOW_EXISTS          1002
-#define CREATE_SUB_FLOW_MAX             1003
-#define INTERNEL_IMPOSSIBLE             1004
-#define SEND_MPCAPABLE_EVENT_FAIL       1005
-#define BPF_TAIL_CALL_FAIL              1006
-#define MAINFLOW_DELETE_MP_CONNECT_FAIL 1007
+#define FAILED_ADJUST_XDP_META          1001
+#define FAILED_GET_XDP_ACTION           1002
+#define INTERNAL_IMPOSSIBLE             1003
+#define INVALID_ACTION_ARGUMENT         1004
+#define POP_XDP_ACTION_FAILED           1005
 #define NOT_TARGET                      1
 
 #endif

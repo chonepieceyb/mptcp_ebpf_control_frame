@@ -34,20 +34,18 @@ struct bpf_elf_map {
      __u32 inner_idx;
 };
 
+#ifndef bpfprintk
 #define bpfprintk(fmt, ...)                    \
 ({                                              \
     char ____fmt[] = fmt;                       \
     bpf_trace_printk(____fmt, sizeof(____fmt),  \
              ##__VA_ARGS__);                    \
 })
+#endif
 
 #ifndef lock_xadd
 #define lock_xadd(ptr, val)   __sync_fetch_and_add(ptr, val)
 #endif 
-
-#else
-
-#define bpfprintk(fmt, ...) bpf_trace_printk(fmt, ...)
 
 #endif
 
@@ -188,7 +186,6 @@ struct mp_remove_addr {
 		sub:4;
 #elif defined(__BIG_ENDIAN_BITFIELD)
 	__u8	sub:4,
-
 		rsv:4;
 #else
 #error "Adjust your <asm/byteorder.h> defines"
@@ -221,7 +218,6 @@ struct mp_fclose {
 	__u16	rsv1:4,
 		sub:4,
 		rsv2:8;
-
 #elif defined(__BIG_ENDIAN_BITFIELD)
 	__u16	sub:4,
 		rsv1:4,
@@ -263,7 +259,6 @@ struct hdr_cursor {
     void *pos;
 };
 
-#define MAX_SUBFLOW_NUM 200000
 /*tcp 4 tuple key 96bytes, network byte order*/
 struct tcp_4_tuple {
     __be32      local_addr;
@@ -272,52 +267,30 @@ struct tcp_4_tuple {
     __be16	peer_port;
 };
 
-//for test 
-struct tcp_ip_tuple {
-    __be32      local_addr;
-    __be32      peer_addr;
+struct mp_capable_event_t {
+    struct tcp_4_tuple  connect; 
+    __u32       sended_data;
+    __u64       peer_key;
 };
 
-//typedef struct tcp_4_tuple flow_key_t; 
-typedef struct tcp_ip_tuple flow_key_t; 
-
-struct subflow_meta {
-    __u8 window_shift;
+#define MAX_SUBFLOWS 1 << 4
+/*mptcp_connects data struct define*/
+struct mptcp_connect {
+    __u32       flow_nums;    //__syn_fetch_and_add only support 32bit or 64 bit
+    struct tcp_4_tuple subflows[MAX_SUBFLOWS];
 };
 
-#define MAX_XDP_ACTION_NUM 32
-#define XDP_ACTIONS_PATH "/sys/fs/bpf/mptcp_ebpf_control_frame/xdp_actions"
-#define SUBFLOW_MAX_ACTION_NUM 4
-#define SUBFLOW_PARAM_BYTES 20
-#define SUBFLOW_ACTION_INGRESS_PATH "/sys/fs/bpf/mptcp_ebpf_control_frame/subflow_action_ingress"
-#define DEFAULT_ACTION 0
-
-enum param_type {
-    IMME = 0,
-    MEM = 1,
+//暂时不加锁
+/*subflows*/
+struct subflow {
+    __s8        address_id;
+    __s8        direction;
+    __s16       action;
+    __u32       token;
+    __u32       sended_pkts;
+    __u32       recved_pkts;
+    __u64       sended_data;
+    __u64       recved_data;
 };
-
-struct action {
-    __u8 param_type;
-    union {
-        __u8 action;
-        __u8 next_action;
-    } u1;
-    union {
-        __u16 imme;
-        struct {
-            __u8 offset;
-            __u8 version;  //可以用来判断是否失效
-        } mem;
-    } u2;
-};
-
-struct subflow_xdp_actions {
-    __u8 version;
-    struct action actions[SUBFLOW_MAX_ACTION_NUM];
-    char params[SUBFLOW_PARAM_BYTES];
-};
-
-typedef struct subflow_xdp_actions xdp_action_value_t;
 
 #endif 

@@ -4,28 +4,105 @@ import argparse
 import os
 
 from common import *
-from bpf_func_loader import BPFFuncLoader
+from bpf_loader import BPFBCCLoader, BPFObjectLoader
 from config import CONFIG
 from utils import *
 from libbpf import *
+from bpf_map_def import *
 
+class TailCallLoader: 
+    def __init__(self, tail_call_list, loader = BPFBCCLoader, *, loaded):
+        '''
+            tail_call_dict : [
+                {
+                    "src_path" : {
+
+                    },
+                    "obj_path" : {
+                        
+                    },
+                    "progs" : {
+
+                    },
+                    "pin_maps": {
+
+                    },
+                    "kw" : {
+                        
+                    }, 
+                    "tail_call_map" : {
+                        "name" : index,
+                    }
+                }
+            ]
+        '''
+        if loader == BPFBCCLoader:
+            path_key = "src_path"
+        elif loader == BPFObjectLoader:
+            path_key = "obj_path"
+        else:
+            raise RuntimeError("invalid loader")
+
+        self.bpf_loader = []
+        self.tail_call_map = {}  # key : tail_call_index, value : fd 
+        for index, item in enumerate(tail_call_list):
+            self.bpf_loader.append(loader(item[path_key], progs = item["progs"], pin_maps = item["pin_maps"], loaded = loaded, **item["kw"]))
+        self._set_tail_call_map()
+
+    def load(self, prog_array_fd):
+        for key, fd in self.tail_call_map.items():
+            tail_call_index = ct.c_int(int(key))
+            fd_c = ct.c_int(fd)
+            bpf_map_update_elem(prog_array_fd, ct.byref(tail_call_index), ct.byref(fd_c))
+    
+    def unload(self):
+        # 暂时不修改 prog_array 里的值
+        for loader in self.bpf_loader:
+            loader.unpin()
+
+    def _set_tail_call_map(self):
+        for idx_str, val in XDP_TAILCALL_IDX_NAME_MAP.items():
+            list_idx = int(val["list_idx"])
+            func_name = val["tail_call_name"]
+            fd = self.bpf_loader[list_idx].get_prog_fd(func_name)
+            self.tail_call_map[idx_str] = fd 
+                
 #为了方便暂时先使用bcc来加载，之后为了统一，考虑修改成使用 libbpf进行加载
 class XdpLoader: 
-    def __init__(self, interfaces): 
+    def __init__(self, interfaces, xdp_main, tail_call_list, loader): 
+        if loader == BPFBCCLoader:
+            self.path_key = "src_path"
+        else:
+            raise RuntimeError("invalid loader")
+        self.loader = loader 
         self.interfaces = interfaces
+        self.xdp_main = xdp_main
+        self.tail_call_list = tail_call_list 
         assert(len(self.interfaces) > 0)
 
-    def attach(self, prog_path) : 
-        xdp_main = BPFFuncLoader(prog_path, BPF.XDP, cflags = ["-I%s"%SRC_BPF_KERN_PATH])
+    def attach(self): 
+        xdp_main = self.loader(XDP_MAIN[self.path_key], progs = XDP_MAIN["progs"], pin_maps = XDP_MAIN["pin_maps"], loaded = True, **XDP_MAIN["kw"])
+        xdp_actions_fd = xdp_main.get_map_fd(XDP_ACTIONS)
+        tailcall_loader = TailCallLoader(XDP_TAIL_CALL_LIST, self.loader, loaded = True)
+        tailcall_loader.load(xdp_actions_fd)
+
+        #暂时只支持用bcc load
         for interface in self.interfaces: 
             print("atttach xdp to %s"%interface)
-            BPF.attach_xdp(dev=interface, fn = xdp_main.func, flags=BPF.XDP_FLAGS_UPDATE_IF_NOEXIST)
+            BPF.attach_xdp(interface, xdp_main.get_func("xdp_main"), flags=BPF.XDP_FLAGS_UPDATE_IF_NOEXIST)
 
-    def detach(self) : 
+    def detach(self): 
         for interface in self.interfaces:
             print("move xdp of %s"%interface)
             BPF.remove_xdp(interface)
-        
+        try:
+            xdp_main = self.loader(XDP_MAIN[self.path_key], progs = XDP_MAIN["progs"], pin_maps = XDP_MAIN["pin_maps"], loaded = False, **XDP_MAIN["kw"])
+            tailcall_loader = TailCallLoader(XDP_TAIL_CALL_LIST, self.loader, loaded = False)
+            xdp_main.unpin()
+            tailcall_loader.unload()
+        except Exception:
+            pass
+
 #使用 clsact disc 
 #https://arthurchiao.art/blog/understanding-tc-da-mode-zh/#1-%E8%83%8C%E6%99%AF%E7%9F%A5%E8%AF%86linux-%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6tc%E5%AD%90%E7%B3%BB%E7%BB%9F
 class TCLoader:
@@ -46,7 +123,6 @@ class TCLoader:
     def attach(self, targets) : 
         assert(isinstance(targets, list))
         assert(len(targets) > 0)    
-        self._load_tailcall_funcs()
         
         for interface in self.interfaces: 
             print("add clsact qdisc to %s"%interface)
@@ -73,75 +149,6 @@ class TCLoader:
         assert(direction in ["ingress", "egress"])
         return TCLoader.add_tc_filter_cmd%(interface, direction, da_flag, obj)
 
-    def _load_tailcall_funcs(self):
-        join_path = os.path.join(BPF_TC_BTF_OBJS_PATH, "tc_egress_join.c.o")
-        mpc_path = os.path.join(BPF_TC_BTF_OBJS_PATH, "tc_egress_mpcapable.c.o")
-        tail_path = os.path.join(BPF_TC_BTF_OBJS_PATH, "tc_egress_tailcall.c.o")
-
-        #open
-        join_obj = bpf_object__open(join_path)  
-        mpc_obj = bpf_object__open(mpc_path)
-        tail_obj = bpf_object__open(tail_path)
-        
-        tail_map = bpf_object__find_map_by_name(tail_obj, "tc_egress_tailcall")
-        mpc_prog = bpf_object__find_program_by_name(mpc_obj, "tc_egress_mpcapable")
-        mpj_prog = bpf_object__find_program_by_name(join_obj, "tc_egress_join")
-        
-        mp_connect = bpf_object__find_map_by_name(join_obj, "mptcp_connects")
-        subflows = bpf_object__find_map_by_name(join_obj, "subflows")
-        mp_capable_output = bpf_object__find_map_by_name(mpc_obj, "mp_capable_perf_output")
-        
-        if os.path.exists(MPTCP_OUTPUT_PATH) : 
-            mptcp_output_fd = bpf_obj_get(MPTCP_OUTPUT_PATH)
-            print("reuse mp output %d"%mptcp_output_fd)
-            bpf_map__reuse_fd(mp_capable_output, mptcp_output_fd)
-
-        if os.path.exists(SUBFLOWS_PATH) : 
-            subflows_fd = bpf_obj_get(SUBFLOWS_PATH)
-            print("reuse subflow %d"%subflows_fd)
-            bpf_map__reuse_fd(subflows, subflows_fd)
-        
-        if os.path.exists(MPTCP_CONNECTS_PATH):
-            mp_connects_fd = bpf_obj_get(MPTCP_CONNECTS_PATH)
-            print("reuse mptcp connects %d"%mp_connects_fd)
-            bpf_map__reuse_fd(mp_connect, mp_connects_fd)
-        
-        if os.path.exists(TC_EGRESS_TAILCALL_PATH):
-            tail_call_fd = bpf_obj_get(TC_EGRESS_TAILCALL_PATH)
-            print("reuse tail call %d"%tail_call_fd)
-            bpf_map__reuse_fd(tail_map, tail_call_fd)
-
-        #load 
-        bpf_object__load(join_obj)
-        bpf_object__load(mpc_obj)
-        bpf_object__load(tail_obj)
-        #pin and get fd 
-        
-        '''
-        tail_prog = """
-        BPF_TABLE_PINNED("prog", int, int, tc_egress_tailcall, 4, "/sys/fs/bpf/tc/globals/tc_egress_tailcall");
-        """
-        bpf = BPF(text = tail_prog)
-        print(TC_EGRESS_TAILCALL_PATH)
-        tail_map_fd = bpf_obj_get(TC_EGRESS_TAILCALL_PATH)
-        '''
-
-        tail_map_fd = pin_tc_egress_tailcall_obj(tail_map)
-        mpc_fd = pin_tc_egress_mpcapable_obj(mpc_prog)
-        mpj_fd = pin_tc_egress_join_obj(mpj_prog)
-
-        pin_mptcp_connects_obj(mp_connect)
-        pin_subflows_obj(subflows)
-        pin_mptcp_output_obj(mp_capable_output)
-
-        
-        mpc_index = ct.c_int(0)
-        mpj_index = ct.c_int(1)
-        mpc_fd = ct.c_int(mpc_fd)
-        mpj_fd = ct.c_int(mpj_fd)
-        #set tail call 
-        bpf_map_update_elem(tail_map_fd, ct.byref(mpc_index), ct.byref(mpc_fd))
-        bpf_map_update_elem(tail_map_fd, ct.byref(mpj_index), ct.byref(mpj_fd))
         
 
 #mptcp ebpf control fram prog loader 
@@ -166,7 +173,7 @@ class ProgLoader:
             exit()
 
         self.tc_loader = TCLoader(interfaces)
-        self.xdp_loader = XdpLoader(interfaces)
+        self.xdp_loader = XdpLoader(interfaces, XDP_MAIN, XDP_TAIL_CALL_LIST, BPFBCCLoader)
         
     def run(self):
         if self.args.a:
@@ -178,8 +185,8 @@ class ProgLoader:
             exit()
 
     def _attach(self):
-        xdp_main_path = os.path.join(XDP_PROG_PATH, CONFIG.xdp.xdp_main + ".c")
         
+        '''
         tc_ingress = {
             "obj" : os.path.join(BPF_TC_OBJS_PATH, CONFIG.tc.tc_ingress + ".c.o"),
             "da_flag" : False,
@@ -191,28 +198,18 @@ class ProgLoader:
             "da_flag" : False,
             "direction" : "egress"
         }
-    
+        '''
         #attach 
-        self.tc_loader.attach([tc_egress])
-        self.xdp_loader.attach(xdp_main_path)
+        #self.tc_loader.attach([tc_egress])
+        self.xdp_loader.attach()
        
     def _detach(self):
         self.xdp_loader.detach()
-        self.tc_loader.detach()
-        self._clear_bpf_map()
+        #self.tc_loader.detach()
         #clear config 
         with open(IF_CONF_PATH, 'w') as f: 
           f.truncate(0)
 
-    def _clear_bpf_map(self):
-        #暂时放这
-        unpin(MPTCP_OUTPUT_PATH)
-        unpin(MPTCP_CONNECTS_PATH)
-        unpin(SUBFLOWS_PATH)
-        unpin(TC_EGRESSS_JOIN_PATH)
-        unpin(TC_EGRESS_TAILCALL_PATH)
-        unpin(TC_EGRESSS_MPCAPABLE_PATH)
-        os.system("sudo rm -rf /sys/fs/bpf/xdp/globals/*")
 #testing 
 if __name__ == '__main__' : 
     import sys

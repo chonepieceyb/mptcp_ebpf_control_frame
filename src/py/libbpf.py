@@ -8,6 +8,49 @@ from enum import IntFlag, IntEnum, unique
 
 #enums 
 @unique
+class BPF_PROG_TYPE(IntEnum):
+	BPF_PROG_TYPE_UNSPEC = 0
+	BPF_PROG_TYPE_SOCKET_FILTER = 1
+	BPF_PROG_TYPE_KPROBE = 2
+	BPF_PROG_TYPE_SCHED_CLS = 3
+	BPF_PROG_TYPE_SCHED_ACT = 4
+	BPF_PROG_TYPE_TRACEPOINT = 5
+	BPF_PROG_TYPE_XDP = 6
+	BPF_PROG_TYPE_PERF_EVENT = 7
+	BPF_PROG_TYPE_CGROUP_SKB = 8
+	BPF_PROG_TYPE_CGROUP_SOCK = 9
+	BPF_PROG_TYPE_LWT_IN = 10
+	BPF_PROG_TYPE_LWT_OUT = 11
+	BPF_PROG_TYPE_LWT_XMIT = 12
+	BPF_PROG_TYPE_SOCK_OPS = 13
+	BPF_PROG_TYPE_SK_SKB = 14
+	BPF_PROG_TYPE_CGROUP_DEVICE = 15
+	BPF_PROG_TYPE_SK_MSG = 16
+	BPF_PROG_TYPE_RAW_TRACEPOINT = 17
+	BPF_PROG_TYPE_CGROUP_SOCK_ADDR = 18
+	BPF_PROG_TYPE_LWT_SEG6LOCAL = 19
+	BPF_PROG_TYPE_LIRC_MODE2 = 20
+	BPF_PROG_TYPE_SK_REUSEPORT = 21
+	BPF_PROG_TYPE_FLOW_DISSECTOR = 22
+	BPF_PROG_TYPE_CGROUP_SYSCTL = 23
+	BPF_PROG_TYPE_RAW_TRACEPOINT_WRITABLE= 24
+	BPF_PROG_TYPE_CGROUP_SOCKOPT = 25
+	BPF_PROG_TYPE_TRACING = 26
+	BPF_PROG_TYPE_STRUCT_OPS = 27
+	BPF_PROG_TYPE_EXT = 28
+	BPF_PROG_TYPE_LSM = 29
+	BPF_PROG_TYPE_SK_LOOKUP = 30
+	BPF_PROG_TYPE_SYSCALL = 31 
+
+@unique
+class XDP_FLAGS(IntEnum):
+    XDP_FLAGS_UPDATE_IF_NOEXIST =   (1 << 0)
+    XDP_FLAGS_SKB_MODE =            (1 << 1)
+    XDP_FLAGS_DRV_MODE = 	        (1 << 2)
+    XDP_FLAGS_HW_MOD = 	            (1 << 3)
+    XDP_FLAGS_REPLACE = 		    (1 << 4)
+
+@unique
 class BPF_MAP_TYPE(IntEnum): 
     BPF_MAP_TYPE_UNSPEC = 0
     BPF_MAP_TYPE_HASH = 1
@@ -158,6 +201,18 @@ lib.bpf_program__pin.argtypes = [ct.c_void_p, ct.c_char_p]
 
 lib.bpf_map__reuse_fd.restype = ct.c_int
 lib.bpf_map__reuse_fd.argtypes = [ct.c_void_p, ct.c_int]
+
+lib.bpf_map__set_pin_path.restype = ct.c_int 
+lib.bpf_map__set_pin_path.argtypes = [ct.c_void_p, ct.c_char_p]
+
+lib.bpf_program__set_type.restype = None 
+lib.bpf_program__set_type.argtypes = [ct.c_void_p, ct.c_int]
+
+lib.bpf_xdp_attach.restype = ct.c_int
+lib.bpf_xdp_attach.argtypes = [ct.c_int, ct.c_int, ct.c_uint32, ct.c_void_p]
+
+lib.bpf_xdp_detach.restype = ct.c_int
+lib.bpf_xdp_detach.argtypes = [ct.c_int, ct.c_uint32, ct.c_void_p]
 
 #errors 
 
@@ -354,7 +409,24 @@ def bpf_map__reuse_fd(bpf_map, fd):
     '''
     res = lib.bpf_map__reuse_fd(bpf_map, ct.c_int(fd))
     check_libpfres("bpf_map__reuse_fd failed", res)
-    
+
+def bpf_map__set_pin_path(bpf_map, path):
+    '''
+    @param:
+        bpf_map: map object 
+        path path to be pinned 
+    '''
+    res = lib.bpf_map__set_pin_path(bpf_map, path.encode(encoding = "utf-8"))
+    check_libpfres("bpf_map__set_pin_path failed", res)
+
+def bpf_program__set_type(prog, type):
+    '''
+    @param:
+        prog: prog object 
+        type: prog type
+    '''
+    lib.bpf_program__set_type(prog, ct.c_int(type))
+
 #perf buffer 
 class PerfBuffer:
     def __init__(self, fd, cb, lost_cb = None, *, page_cnt = 8) :

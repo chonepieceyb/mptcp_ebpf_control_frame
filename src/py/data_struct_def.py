@@ -1,15 +1,13 @@
 #-*- coding:utf-8 -*-
 import ctypes as ct
-from xml.dom.minidom import TypeInfo 
+from common import *
+from enum import IntEnum , unique
 from config import CONFIG
-from enum import IntEnum
 
-token_type = ct.c_uint32
-mptcp_key_type = ct.c_uint64
-
-class direction(IntEnum):
-    CLIENT = 0,
-    SERVER = 1
+@unique 
+class param_type_t(IntEnum):
+    IMME = 0,
+    MEM = 1
 
 #network bytes order 
 class tcp_4_tuple(ct.Structure):
@@ -20,52 +18,47 @@ class tcp_4_tuple(ct.Structure):
         ("peer_port", ct.c_uint16)\
     ]
 
-#network bytes order 
-#暂时考虑只有一个方向, 只有采用编译的手段加进去
-class mp_capable_event_t(ct.Structure):
-    _fields_ = [\
-        ("connect", tcp_4_tuple),\
-        ("sended_data", ct.c_uint32),\
-        ("peer_key", mptcp_key_type)\
+class tcp_2_tuple(ct.Structure):
+    _fields_  = [\
+        ("local_addr", ct.c_uint32),\
+        ("peer_addr", ct.c_uint32)\
     ]
 
-'''
-    flow_nums: 当前建立的子流数
-    sub_flows: 子流的信息
-'''
-class mptcp_connect(ct.Structure):
-    _fields_ = [\
-        ("flow_nums", ct.c_uint32),\
-        ("subflows", tcp_4_tuple * CONFIG.mptcp_connects.max_subflow_entries)
+flow_key_t = tcp_2_tuple
+
+class action_union(ct.Union):
+    _fields_  = [\
+        ("action", ct.c_uint8),\
+        ("next_action", ct.c_uint8),\
     ]
 
-MAIN_FLOW_ID =  -1
-
-'''
-int8 address_id :  subflow的 address_id , 如果 address_id 为 -1 代表是主流 ,
-int8 direction :  代表方向
-int16 action 该子流采用的动作
-u32 token 子流对应的mptcp 主流的 token 
-u32 client_iseq 本机发送的 init seq 
-u32 server_iseq 对端发送的 init seq 
-u32 client_pkts 目前发送的数据包数
-u32 server_pkts 目前收到的数据包数
-u64 sended_data 目前发送的数据数（计算方式是，每收到一个包就加上这个包的负载长度，可能存在误差，因为收到的pkt可能损坏了） 
-u64 recved_data 目前收到的数据数计算方式同上
-总大小为 40byte
-'''
-class subflow(ct.Structure):
-    _fields_ = [\
-        ("address_id", ct.c_int8),\
-        ("direction", ct.c_int8),\
-        ("action", ct.c_int16),\
-        ("token", ct.c_uint32),\
-        ("sended_pkts", ct.c_uint32),\
-        ("recved_pkts", ct.c_uint32),\
-        ("sended_data", ct.c_uint64),\
-        ("recved_data", ct.c_uint64)
+class mem_param(ct.Structure):
+    _fields_  = [\
+        ("offset", ct.c_uint8),\
+        ("version", ct.c_uint8),\
     ]
 
+class param_union(ct.Union):
+    _fields_  = [\
+        ("imme", ct.c_uint16),
+        ("mem", mem_param)
+    ]
 
-if __name__ == '__main__' :
-    print(ct.sizeof(mp_capable_event_t))
+class action(ct.Structure):
+    _fields_  = [\
+        ("param_type", ct.c_uint8),\
+        ("u1", action_union),\
+        ("u2", param_union)
+    ]
+
+class subflow_xdp_actions(ct.Structure):
+    _fields_  = [\
+        ("version", ct.c_uint8),\
+        ("actions", action * CONFIG.subflow_max_action_num),\
+        ("params", ct.c_byte * CONFIG.subflow_param_bytes)
+    ]
+
+xdp_action_value_t = subflow_xdp_actions
+
+if __name__ == '__main__':
+    pass

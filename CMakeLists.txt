@@ -12,6 +12,7 @@ add_definitions(-DNOBCC)
 
 #sub dir 
 #add_subdirectory("${BPF_KERN_SRC_FILES}/tc" "${BPF_KERN_TARGETS}/tc")
-add_subdirectory("${BPF_KERN_SRC_FILES}/tc")
-add_subdirectory("${BPF_KERN_SRC_FILES}/tc_btf")
+#add_subdirectory("${BPF_KERN_SRC_FILES}/tc")
+#add_subdirectory("${BPF_KERN_SRC_FILES}/tc_btf")
+add_subdirectory("${BPF_KERN_SRC_FILES}/xdp")
 
