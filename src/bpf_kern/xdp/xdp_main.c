@@ -13,17 +13,25 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __type(key, flow_key_t);
-    __type(value, xdp_action_value_t);
+    __type(value, xdp_subflow_action_t);
     __uint(max_entries, MAX_SUBFLOW_NUM);
 } subflow_action_ingress SEC(".maps");
 
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, xdp_action_t);
+    __type(value, xdp_action_meta_t);
+    __uint(max_entries, XDP_ACTIONS_META_SIZE);
+} xdp_actions_meta SEC(".maps");
+
 #else
 BPF_TABLE_PINNED("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM,  XDP_ACTIONS_PATH);
-BPF_TABLE_PINNED("hash", flow_key_t, xdp_action_value_t, subflow_action_ingress, MAX_SUBFLOW_NUM, SUBFLOW_ACTION_INGRESS_PATH);
+BPF_TABLE_PINNED("hash", flow_key_t, xdp_subflow_action_t, subflow_action_ingress, MAX_SUBFLOW_NUM, SUBFLOW_ACTION_INGRESS_PATH);
+BPF_TABLE_PINNED("hash", xdp_action_t, xdp_action_meta_t, xdp_actions_meta, XDP_ACTIONS_META_SIZE, XDP_ACTIONS_META_PATH);
 #endif
 
 // return 0 if success else return -1 
-static __always_inline int set_xdp_action_chain(struct xdp_md *ctx, struct action actions[SUBFLOW_MAX_ACTION_NUM], __u8 *first_action) {
+static __always_inline int set_xdp_action_chain(struct xdp_md *ctx, xdp_action_t actions[SUBFLOW_MAX_ACTION_NUM], __u8 *first_action) {
     //遍历几个字节的事情，我觉得开销应该不会特别大
     __u16 action_num = 0; 
     long res;
@@ -48,7 +56,7 @@ static __always_inline int set_xdp_action_chain(struct xdp_md *ctx, struct actio
     actions[SUBFLOW_MAX_ACTION_NUM-1].u1.next_action = DEFAULT_ACTION;
     
     //adjust xdp_meta and set action chain to xdp_meta 
-    res = bpf_xdp_adjust_meta(ctx, -(action_num * sizeof(struct action)));
+    res = bpf_xdp_adjust_meta(ctx, -(action_num * sizeof(xdp_action_t)));
     if (res < 0) {
         return -FAILED_ADJUST_XDP_META;
     }
@@ -59,11 +67,11 @@ static __always_inline int set_xdp_action_chain(struct xdp_md *ctx, struct actio
     #pragma unroll SUBFLOW_MAX_ACTION_NUM
     for (int i = 0; i < SUBFLOW_MAX_ACTION_NUM; i++) {
         if (i >= action_num) break;
-        if (pos + sizeof(struct action) > data) {
+        if (pos + sizeof(xdp_action_t) > data) {
             return -FAILED_ADJUST_XDP_META;
         }
-        __builtin_memcpy(pos, (void*)actions, sizeof(struct action));
-        pos += sizeof(struct action);
+        __builtin_memcpy(pos, (void*)actions, sizeof(xdp_action_t));
+        pos += sizeof(xdp_action_t);
     }
     return 0;
 }
@@ -90,8 +98,8 @@ int xdp_main(struct xdp_md *ctx)
     }
     
     flow_key_t flow_key;
-    xdp_action_value_t *sub_actions;
-    struct action actions[SUBFLOW_MAX_ACTION_NUM];
+    xdp_subflow_action_t *sub_actions;
+    xdp_action_t actions[SUBFLOW_MAX_ACTION_NUM];
 
     __builtin_memset(&flow_key, 0, sizeof(flow_key_t));
     __builtin_memset(actions, 0, sizeof(actions));
@@ -105,7 +113,7 @@ int xdp_main(struct xdp_md *ctx)
 #endif
     if (sub_actions == NULL) goto not_target;
 
-    __builtin_memcpy(&actions, &sub_actions->actions, sizeof(struct action) * SUBFLOW_MAX_ACTION_NUM);
+    __builtin_memcpy(&actions, &sub_actions->actions, sizeof(xdp_action_t) * SUBFLOW_MAX_ACTION_NUM);
     //set action
     __u8 first_action = 0;
     res = set_xdp_action_chain(ctx, actions, &first_action);
@@ -128,3 +136,6 @@ fail:
 not_target:
     return XDP_PASS;
 }
+#ifdef NOBCC
+char _license[] SEC("license") = "GPL";
+#endif 

@@ -12,6 +12,7 @@ struct {
 
 #else
 BPF_TABLE_PINNED("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM, XDP_ACTIONS_PATH);
+//BPF_TABLE("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM);
 #endif
 
 #ifdef NOBCC
@@ -35,7 +36,7 @@ int set_recv_win_ingress(struct xdp_md *ctx) {
         goto fail;
     }
     
-    struct action a;   //4bytes 
+    xdp_action_t a;   //4bytes 
     res = get_xdp_action(ctx, &a);
     if (res < 0) {
         goto fail;
@@ -70,8 +71,11 @@ int set_recv_win_ingress(struct xdp_md *ctx) {
 fail: 
     return XDP_PASS;
 finish:
-    bpf_trace_printk("finish!");
+    //bpf_trace_printk("finish!");
     return XDP_PASS;
 out_of_bound:
     return XDP_PASS;
 }
+#ifdef NOBCC
+char _license[] SEC("license") = "GPL";
+#endif 

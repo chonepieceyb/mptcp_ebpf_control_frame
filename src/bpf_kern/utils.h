@@ -7,6 +7,7 @@
 #include <linux/ip.h>
 #include <linux/tcp.h>
 #include "common.h"
+#include "actions_def.h"
 #include "error.h"
 
 #ifdef NOBCC
@@ -39,7 +40,7 @@
 #define SCAN_MPTCP_OPT_SUB(pos, de, sub){\
     struct mptcp_option *opt = (pos);\
     CHECK_BOUND(opt, (de));\
-    if (opt->kind == 30 && opt->sub == (sub)){\
+    if (opt->kind == MPTCP_KIND && opt->sub == (sub)){\
         goto found;\
     }\
     if (opt->kind == 0 || opt->kind == 1) {\
@@ -53,7 +54,7 @@
 #define SCAN_MPTCP_OPT(pos, de){\
     struct mptcp_option *opt = (pos);\
     CHECK_BOUND(opt, (de));\
-    if (opt->kind == 30){\
+    if (opt->kind == MPTCP_KIND){\
         goto found;\
     }\
     if (opt->kind == 0 || opt->kind == 1) {\
@@ -87,6 +88,7 @@ static __always_inline void csum_replace2(__sum16 *sum, __be16 old, __be16 new)
 {
 	*sum = ~csum16_add(csum16_sub(~(*sum), old), new);
 }
+
 #endif 
 
 static __always_inline void move_cursor(struct hdr_cursor *nh, int bytes) {
@@ -140,10 +142,12 @@ out_of_bound:
 }
 
 static __always_inline int parse_tcphdr(struct hdr_cursor *nh, 
+
         void *data_end,
         struct tcphdr **tcphdr) {
     //after parse pos point to the begin of tcp options
     //return tcp header length(>=20) to check weather carray a tcp option
+
     struct tcphdr *tcph = nh->pos;
 
     CHECK_BOUND(tcph, data_end);
@@ -154,6 +158,8 @@ static __always_inline int parse_tcphdr(struct hdr_cursor *nh,
     return hlen << 2;  //不知道直接获取对不对，先这样
 
 out_of_bound:
+
+
     return -1;
 }
 
@@ -165,6 +171,7 @@ static __always_inline int is_tcp_packet(struct hdr_cursor *nh, void *data_end, 
     if (res != bpf_htons(ETH_P_IP)) {
         return -1;
     }
+
 
     // parse ipv4 header
     res = parse_ipv4hdr(nh, data_end, iph);
@@ -192,6 +199,7 @@ static __always_inline int check_mptcp_opt(struct hdr_cursor *nh, void *data_end
  *      -2 : mptcp options not exists, nh keep no change 
  */
     void *start = nh->pos;
+
     void *pos = start;
     #pragma unroll 40
     for (int index = 0; index < 40; index++) {
@@ -205,6 +213,7 @@ found:
     return 0;
 
 out_of_bound:
+
 
     return -1;
 
@@ -260,16 +269,21 @@ static __always_inline int cal_segment_len(const struct iphdr *iph, const struct
     return tot_len - 20 - ((tcph->doff) << 2);
 }
 
+//return 1 if need 
+static __always_inline int xdp_action_need_meta(int action) {
+    return  XDP_ACTION_META_BITMAP & (1 << action);
+}
+
 //return 0 if success
 //return negative if failed 
-static __always_inline int get_xdp_action(struct xdp_md *ctx, struct action *a) {
+static __always_inline int get_xdp_action(struct xdp_md *ctx, xdp_action_t *a) {
     void *data = (void *)(__u64)(ctx->data);
     void *data_meta = (void *)(__u64)(ctx->data_meta);
     
-    if(data_meta + sizeof(struct action) > data) {
+    if(data_meta + sizeof(xdp_action_t) > data) {
         return -FAILED_GET_XDP_ACTION;
     }
-    __builtin_memcpy(a, data_meta, sizeof(struct action));
+    __builtin_memcpy(a, data_meta, sizeof(xdp_action_t));
     return 0;
 }
 
@@ -277,7 +291,7 @@ static __always_inline int get_xdp_action(struct xdp_md *ctx, struct action *a) 
 //negative if fail
 static __always_inline int pop_xdp_action(struct xdp_md *ctx) {
     long res; 
-    res = bpf_xdp_adjust_meta(ctx, sizeof(struct action));
+    res = bpf_xdp_adjust_meta(ctx, sizeof(xdp_action_t));
     if (res < 0) {
         return -POP_XDP_ACTION_FAILED;
     } else {
@@ -294,5 +308,211 @@ static __always_inline void get_ingress_flow_key(const struct iphdr *iph, const 
     //flow_key->peer_port = tcph->source;
 }
 
+#define NORMAL_H_LEN (sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct tcphdr))
+
+#define COPY_TCP_OPT_FROM_P(index, tcp_opt_len, dst, pkt_src, de){              \
+    if ((index) >= (tcp_opt_len)) goto out;                                     \
+    CHECK_BOUND_BY_SIZE(pkt_src, de, 4);                                        \
+    __builtin_memcpy((void*)(dst),(void*)(pkt_src),4);                          \
+    (pkt_src) = (void*)(pkt_src) + 4;                                           \
+    (dst) = (void*)(dst) + 4;                                                   \
+}\
+
+#define COPY_TCP_OPT_TO_P(index, tcp_opt_len, pkt_dst, src, de){                \
+    if ((index) >= (tcp_opt_len)) goto out;                                     \
+    CHECK_BOUND_BY_SIZE(pkt_dst, de, 4);                                        \
+    __builtin_memcpy((void*)(pkt_dst),(void*)(src),4);                          \
+    (src) = (void*)(src) + 4;                                                   \
+    (pkt_dst) = (void*)(pkt_dst) + 4;                                                   \
+}\
+
+struct pkt_header_buf_t {
+    char normal_header[NORMAL_H_LEN];
+    char tcp_opts[40];
+};
+
+
+//return 0 success 
+//return negative if fail
+static __always_inline int store_header(struct pkt_header_buf_t *temp, struct hdr_cursor *nh, void *data_end, __u16 tcp_opt_len) {
+    void *pkt_src = nh->pos;
+
+    CHECK_BOUND_BY_SIZE(pkt_src, data_end, NORMAL_H_LEN)
+    __builtin_memcpy(&temp->normal_header, pkt_src, NORMAL_H_LEN);
+    pkt_src += NORMAL_H_LEN;
+
+    void *dst = (void*)(&temp->tcp_opts);
+    __u16 tl4 = tcp_opt_len >> 2;  
+    COPY_TCP_OPT_FROM_P(0, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(1, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(2, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(3, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(4, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(5, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(6, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(7, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(8, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(9, tl4, dst, pkt_src, data_end);
+
+out_of_bound: 
+    return -1;
+
+out: 
+    nh->pos = (void*)pkt_src;
+    return 0;
+}
+
+//if success return 0
+//else return -1
+static __always_inline int recover_header(const struct pkt_header_buf_t *temp, struct hdr_cursor *nh, void *data_end, __u16 tcp_opt_len) {
+    void *pkt_dst = nh->pos;
+    CHECK_BOUND_BY_SIZE(pkt_dst, data_end, NORMAL_H_LEN);
+    __builtin_memcpy(pkt_dst, &temp->normal_header, NORMAL_H_LEN);
+    pkt_dst += NORMAL_H_LEN;
+
+    __u16 tl4 = tcp_opt_len >> 2;  
+
+    void *src = (void*)(&temp->tcp_opts);
+
+    COPY_TCP_OPT_TO_P(0, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(1, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(2, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(3, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(4, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(5, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(6, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(7, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(8, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(9, tl4, pkt_dst, src, data_end);
+
+out_of_bound:
+    return -1;
+out:
+    nh->pos = pkt_dst;
+    return 0;
+}
+
+static __always_inline void update_tcphlen_csum(
+    struct iphdr *iph,
+    struct tcphdr *tcph,    
+    int adjust
+)
+{
+    int tot_len, tcp_totlen;
+    tot_len = bpf_ntohs(iph->tot_len);
+    tcp_totlen = tot_len - 20;
+
+    //update ip header and checksum (tot_len)
+    iph->tot_len = bpf_htons(tot_len + adjust);
+    csum_replace2(&iph->check, bpf_htons(tot_len), iph->tot_len);  //update checksum
+
+    //update tcp checksum
+    //update presudo header
+    csum_replace2(&tcph->check, bpf_htons(tcp_totlen), bpf_htons(tcp_totlen + adjust));
+
+    //update tcp header len
+    struct tcp_flags *tfp;
+    __be16 old_tfp;
+
+    size_t off = offsetof(struct tcphdr, ack_seq) + sizeof(__be32);
+    tfp = (void*)tcph + off;
+
+    __builtin_memcpy((void*)&old_tfp, (void*)tfp, 2);
+    tfp->doff += (adjust >> 2);
+    csum_replace2(&tcph->check, old_tfp, *((__be16*)tfp));
+}
+
+//对于数据包来说，无法直接使用 xdp_adjust_tail helper 
+//supposed that we don't contains IP opts 
+//return 0 if success
+//return -1 failed but packet had not been modified 
+//return -2 failed but packet had been modified 
+static __always_inline int xdp_grow_tcp_header(struct xdp_md *ctx, struct hdr_cursor *nh,  __u16 tcp_opt_len, int bytes) {
+    if (bytes <= 0) {
+        goto fail_no_modified;
+    }
+    void * data = (void *)(long)ctx->data;
+    void * data_end =  (void *)(long)ctx->data_end; 
+    nh->pos = data;
+
+    int res;
+    struct pkt_header_buf_t buf;
+
+    //1. store header to buf
+    res = store_header(&buf, nh, data_end, tcp_opt_len);
+    if (res < 0) {
+        goto fail_no_modified;
+    }
+
+    //2. grow header
+    res = bpf_xdp_adjust_head(ctx, -bytes);
+    if (res < 0) {
+        goto fail_modified;
+        //adjust failed 
+        //goto fail_modified;
+    }
+
+    //3 reset data and data_end
+    data =  (void *)(long)ctx->data; 
+    data_end =  (void *)(long)ctx->data_end; 
+
+    
+    //4. recover header 
+    nh->pos = data;
+    res = recover_header(&buf, nh, data_end, tcp_opt_len);
+    if (res < 0) {
+        goto fail_modified;
+    }
+    return 0;
+fail_no_modified:
+    return -1;
+fail_modified:
+    return -2;
+}
+
+static __always_inline void add_tcpopt_csum(__sum16 *csum, const void *src, __u16 size) {
+    __u16 s2 = size >> 1;
+    __sum16 check = ~(*csum);
+    const __be16 *begin = src;
+#pragma unroll 20 
+    for (int i = 0; i < 20; i++) {
+        if (i >= s2) break;
+        check = csum16_add(check, *begin++);
+    }
+    *csum = ~check;
+}
+
+//this function must be called after  xdp_grow_tcp_header (to  ensure csum is right)
+//return 0 if success 
+//return negative if fail
+static __always_inline int add_tcp_opts(struct hdr_cursor *nh, void *data_end, const void *opts, __u16 size) {
+    if (opts == NULL) goto fail;
+    if ((size & 0x3) != 0) {
+        //size % 4 != 0
+        goto fail;
+    }
+
+    void *pkt_dst = nh->pos;
+    const void *src = opts;
+    __u16 s4 = size >> 2;  
+
+#pragma unroll 10
+    for (int i = 0; i < 10; i++) {
+        COPY_TCP_OPT_TO_P(i, s4, pkt_dst, src, data_end);
+    out:
+        break;
+    }
+
+    nh->pos = pkt_dst;
+    return 0;
+fail:
+    return -1;
+out_of_bound:
+    return -1;
+}
+
+static __always_inline void set_tcp_nop(__u8 *dst) {
+    *dst = 0x01;
+}
 #endif 
 

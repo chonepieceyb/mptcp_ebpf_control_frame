@@ -427,6 +427,19 @@ def bpf_program__set_type(prog, type):
     '''
     lib.bpf_program__set_type(prog, ct.c_int(type))
 
+def bpf_xdp_attach(ifindex, prog_fd, flags, opts):
+    '''
+    @param
+        ifindex : dev if index, ifindex can got by name using socket.if_nametoindex func 
+        prog_fd : xdp prog fd 
+        flags : 
+
+        opts: 
+            const struct bpf_xdp_attach_opts 
+    '''
+    res = lib.bpf_xdp_attach(ct.c_int(ifindex), ct.c_int(prog_fd), ct.c_uint32(flags), opts)
+    check_libpfres("bpf_xdp_attach failed", res)
+
 #perf buffer 
 class PerfBuffer:
     def __init__(self, fd, cb, lost_cb = None, *, page_cnt = 8) :

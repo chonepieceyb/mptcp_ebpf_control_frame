@@ -6,8 +6,9 @@ from socket import inet_aton
 from libbpf import *
 from bpf_map_def import SUBFLOW_ACTION_INGRESS
 
-ACTION_DICT = {
-    "set_recv_win_in" : SetRecvWinIngress
+INGRESS_ACTION_DICT = {
+    "set_recv_win" : SetRecvWinIngress,
+    "set_flow_prio" : SetFlowPrioIngress
 }
 
 def flow_action_parse_args(arg_list):
@@ -49,10 +50,10 @@ version:%d"""%(a.u2.offset, a.u2.version)
         self.action_count = 0
         self.action_objs = []
 
-    def add(self, name, arg_list):
+    def add(self, name, **kw):
         if self.action_count >= CONFIG.subflow_max_action_num:
             raise RuntimeError("fail to add action : too much action, max_action_num :%d"%CONFIG.subflow_max_action_num)
-        action_obj = ACTION_DICT[name](arg_list = arg_list)
+        action_obj = INGRESS_ACTION_DICT[name](**kw)
         self.action_objs.append(action_obj)
         action_dump, _ = action_obj.dump()
         self.subflow_actions.actions[self.action_count] = action_dump 

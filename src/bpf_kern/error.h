@@ -6,6 +6,8 @@
 #define INTERNAL_IMPOSSIBLE             1003
 #define INVALID_ACTION_ARGUMENT         1004
 #define POP_XDP_ACTION_FAILED           1005
+#define XDP_GROW_TCP_HEADER_FAIL        1006
+#define XDP_ADD_TCP_OPT_FAIL            1007
 #define NOT_TARGET                      1
 
 #endif

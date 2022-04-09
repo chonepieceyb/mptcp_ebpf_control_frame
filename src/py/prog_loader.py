@@ -1,17 +1,18 @@
 #-*- coding:utf-8 -*-
+from re import U
 from bcc import BPF
 import argparse
 import os
 
 from common import *
-from bpf_loader import BPFBCCLoader, BPFObjectLoader
-from config import CONFIG
+from bpf_loader import *
 from utils import *
 from libbpf import *
 from bpf_map_def import *
+from socket import if_nametoindex
 
 class TailCallLoader: 
-    def __init__(self, tail_call_list, loader = BPFBCCLoader, *, loaded):
+    def __init__(self, prog_array_fd, tail_call_list, loader = BPFBCCLoader):
         '''
             tail_call_dict : [
                 {
@@ -42,36 +43,61 @@ class TailCallLoader:
             path_key = "obj_path"
         else:
             raise RuntimeError("invalid loader")
-
+        
+        self.prog_array_fd = prog_array_fd
         self.bpf_loader = []
         self.tail_call_map = {}  # key : tail_call_index, value : fd 
-        for index, item in enumerate(tail_call_list):
-            self.bpf_loader.append(loader(item[path_key], progs = item["progs"], pin_maps = item["pin_maps"], loaded = loaded, **item["kw"]))
-        self._set_tail_call_map()
+        try: 
+            for item in tail_call_list:
+                self.bpf_loader.append(loader(item[path_key], progs = item["progs"], pin_maps = item["pin_maps"], **item["kw"]))
+            self._set_tail_call_map()
+            self._load()
+        except Exception as e:
+            self.clear()
+            raise e 
 
-    def load(self, prog_array_fd):
-        for key, fd in self.tail_call_map.items():
-            tail_call_index = ct.c_int(int(key))
-            fd_c = ct.c_int(fd)
-            bpf_map_update_elem(prog_array_fd, ct.byref(tail_call_index), ct.byref(fd_c))
-    
-    def unload(self):
-        # 暂时不修改 prog_array 里的值
+    def unpin_maps(self):
         for loader in self.bpf_loader:
-            loader.unpin()
+            loader.unpin_maps()
+
+    def unpin_progs(self):
+        #delete prog fd in prog_array_fd
+        for loader in self.bpf_loader:
+            loader.unpin_progs()
+    
+    def unpin(self):
+        self.unpin_maps()
+        self.unpin_progs()
+
+    def unload(self):
+        for key, _ in self.tail_call_map.items():
+            tail_call_index = ct.c_int(int(key))
+            bpf_map_delete_elem(self.prog_array_fd, ct.byref(tail_call_index))
+
+    def clear(self):
+        self.unload()
+        self.unpin()
 
     def _set_tail_call_map(self):
         for idx_str, val in XDP_TAILCALL_IDX_NAME_MAP.items():
             list_idx = int(val["list_idx"])
             func_name = val["tail_call_name"]
             fd = self.bpf_loader[list_idx].get_prog_fd(func_name)
-            self.tail_call_map[idx_str] = fd 
+            self.tail_call_map[idx_str] = fd
+
+    def _load(self):
+        for key, fd in self.tail_call_map.items():
+            tail_call_index = ct.c_int(int(key))
+            fd_c = ct.c_int(fd)
+            bpf_map_update_elem(self.prog_array_fd, ct.byref(tail_call_index), ct.byref(fd_c))        
                 
 #为了方便暂时先使用bcc来加载，之后为了统一，考虑修改成使用 libbpf进行加载
 class XdpLoader: 
     def __init__(self, interfaces, xdp_main, tail_call_list, loader): 
         if loader == BPFBCCLoader:
             self.path_key = "src_path"
+        elif loader == BPFObjectLoader:
+            self.path_key = "obj_path"
         else:
             raise RuntimeError("invalid loader")
         self.loader = loader 
@@ -81,27 +107,33 @@ class XdpLoader:
         assert(len(self.interfaces) > 0)
 
     def attach(self): 
-        xdp_main = self.loader(XDP_MAIN[self.path_key], progs = XDP_MAIN["progs"], pin_maps = XDP_MAIN["pin_maps"], loaded = True, **XDP_MAIN["kw"])
-        xdp_actions_fd = xdp_main.get_map_fd(XDP_ACTIONS)
-        tailcall_loader = TailCallLoader(XDP_TAIL_CALL_LIST, self.loader, loaded = True)
-        tailcall_loader.load(xdp_actions_fd)
+        xdp_main = None 
+        tailcall_loader = None
+        try:
+            xdp_main = self.loader(XDP_MAIN[self.path_key], progs = XDP_MAIN["progs"], pin_maps = XDP_MAIN["pin_maps"], **XDP_MAIN["kw"])
+            xdp_actions_fd = xdp_main.get_map_fd(XDP_ACTIONS)
+            tailcall_loader = TailCallLoader(xdp_actions_fd, XDP_TAIL_CALL_LIST, self.loader)
 
-        #暂时只支持用bcc load
-        for interface in self.interfaces: 
-            print("atttach xdp to %s"%interface)
-            BPF.attach_xdp(interface, xdp_main.get_func("xdp_main"), flags=BPF.XDP_FLAGS_UPDATE_IF_NOEXIST)
+            #暂时只支持用bcc load
+            for interface in self.interfaces: 
+                print("atttach xdp to %s"%interface)
+                #BPF.attach_xdp(interface, xdp_main.get_func("xdp_main"), flags=BPF.XDP_FLAGS_UPDATE_IF_NOEXIST)
+                bpf_xdp_attach(if_nametoindex(interface), xdp_main.get_prog_fd("xdp_main"), XDP_FLAGS.XDP_FLAGS_UPDATE_IF_NOEXIST, ct.c_void_p(None))
+        except Exception as e: 
+            if xdp_main != None: 
+                xdp_main.unpin()
+            if tailcall_loader != None:
+                tailcall_loader.clear()
+            print(e)
 
     def detach(self): 
         for interface in self.interfaces:
             print("move xdp of %s"%interface)
             BPF.remove_xdp(interface)
-        try:
-            xdp_main = self.loader(XDP_MAIN[self.path_key], progs = XDP_MAIN["progs"], pin_maps = XDP_MAIN["pin_maps"], loaded = False, **XDP_MAIN["kw"])
-            tailcall_loader = TailCallLoader(XDP_TAIL_CALL_LIST, self.loader, loaded = False)
-            xdp_main.unpin()
-            tailcall_loader.unload()
-        except Exception:
-            pass
+        
+        unpin_obj(self.xdp_main)
+        for obj in self.tail_call_list:
+            unpin_obj(obj)
 
 #使用 clsact disc 
 #https://arthurchiao.art/blog/understanding-tc-da-mode-zh/#1-%E8%83%8C%E6%99%AF%E7%9F%A5%E8%AF%86linux-%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6tc%E5%AD%90%E7%B3%BB%E7%BB%9F
@@ -148,8 +180,6 @@ class TCLoader:
         direction = target["direction"]
         assert(direction in ["ingress", "egress"])
         return TCLoader.add_tc_filter_cmd%(interface, direction, da_flag, obj)
-
-        
 
 #mptcp ebpf control fram prog loader 
 class ProgLoader:

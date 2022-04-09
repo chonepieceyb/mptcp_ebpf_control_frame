@@ -47,17 +47,49 @@ struct bpf_elf_map {
 
 #else
 
-#define bpfprintk(fmt, ...) bpf_trace_printk(fmt, ...)
-
 #endif
+
+#define MPTCP_KIND                              30
 
 #define MPTCP_SUB_CAPABLE			0
 #define MPTCP_SUB_JOIN			        1
 #define MPTCP_SUB_DSS		                2
 
+#define MPTCP_SUB_PRIO		                5
+#define MPTCP_SUB_LEN_PRIO	                3
+#define MPTCP_SUB_LEN_PRIO_ADDR	                4
+
 #define MPTCP_SUB_CAPABLE_FLAG			(1 << 0)
 #define MPTCP_SUB_JOIN_FLAG			(1 << 1)
 #define MPTCP_SUB_DSS_FLAG		        (1 << 2)
+
+struct tcp_flags {
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+	__u16	res1:4,
+		doff:4,
+		fin:1,
+		syn:1,
+		rst:1,
+		psh:1,
+		ack:1,
+		urg:1,
+		ece:1,
+		cwr:1;
+#elif defined(__BIG_ENDIAN_BITFIELD)
+	__u16	doff:4,
+		res1:4,
+		cwr:1,
+		ece:1,
+		urg:1,
+		ack:1,
+		psh:1,
+		rst:1,
+		syn:1,
+		fin:1;
+#else
+#error	"Adjust your <asm/byteorder.h> defines"
+#endif	
+};
 
 struct mptcp_option {
 	__u8	kind;
@@ -182,7 +214,7 @@ struct mp_add_addr {
 
 struct mp_remove_addr {
 	__u8	kind;
-	__u8	len;
+	__u8    len;
 #if defined(__LITTLE_ENDIAN_BITFIELD)
 	__u8	rsv:4,
 		sub:4;
@@ -290,13 +322,17 @@ struct subflow_meta {
 #define SUBFLOW_MAX_ACTION_NUM 4
 #define SUBFLOW_PARAM_BYTES 20
 #define SUBFLOW_ACTION_INGRESS_PATH "/sys/fs/bpf/mptcp_ebpf_control_frame/subflow_action_ingress"
-#define DEFAULT_ACTION 0
+#define XDP_ACTIONS_META_SIZE 2048
+#define XDP_ACTIONS_META_PATH  "sys/fs/bpf/mptcp_ebpf_control_frame/xdp_actions_meta"
+
+typedef int xdp_action_meta_t;
 
 enum param_type {
     IMME = 0,
     MEM = 1,
 };
 
+/*
 struct action {
     __u8 param_type;
     union {
@@ -311,13 +347,33 @@ struct action {
         } mem;
     } u2;
 };
+*/
 
-struct subflow_xdp_actions {
-    __u8 version;
-    struct action actions[SUBFLOW_MAX_ACTION_NUM];
+struct action_t {
+    __u8        param_type:2,
+                index:2,
+                version:4;
+    union {
+        __u8 action;
+        __u8 next_action;
+    } u1;
+    union {
+        __u16 imme;
+        struct {
+            __u8 offset;
+            __u8 rsv;
+        } mem;
+    } u2;
+
+};
+
+typedef struct action_t xdp_action_t; 
+
+struct subflow_xdp_actions_t {
+    xdp_action_t actions[SUBFLOW_MAX_ACTION_NUM];
     char params[SUBFLOW_PARAM_BYTES];
 };
 
-typedef struct subflow_xdp_actions xdp_action_value_t;
+typedef struct subflow_xdp_actions_t xdp_subflow_action_t;
 
 #endif 
