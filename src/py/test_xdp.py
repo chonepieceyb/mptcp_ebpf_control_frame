@@ -5,23 +5,12 @@ from bcc import BPF, libbcc
 import unittest
 import ctypes as ct 
 from bpf_map_def import *
-from bpf_loader import BPFBCCLoader, BPFObjectLoader
+from bpf_loader import *
 from action_tool import *
-from prog_loader import TailCallLoader
 
 def raw_to_pkt(raw_pkt) : 
   pkt_byte = eval(str(raw_pkt))
   return Ether(pkt_byte)
-
-def load(bpf, loader):
-    if loader == BPFBCCLoader:
-      path_key = "src_path"
-    elif loader == BPFObjectLoader:
-      path_key = "obj_path"
-    else:
-      raise RuntimeError("invalid loader")
-    l = loader(bpf[path_key], progs = bpf["progs"], pin_maps = bpf["pin_maps"], **bpf["kw"])
-    return l 
 
 class XDPTestCase(unittest.TestCase):
     SKB_OUT_SIZE = 1514 # mtu1500 + 14 eth size
@@ -70,6 +59,7 @@ class XDPTestCase(unittest.TestCase):
         self.fd = fd
 
 def test_set_recv_win_ingress(xdp_tester):
+    print("+++++test set recv win begin ++++++++")
     pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='S', window = 100)
     epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='S', window = 1600)
     
@@ -77,11 +67,12 @@ def test_set_recv_win_ingress(xdp_tester):
     flow_actions.add("set_recv_win", arg_list = ["--recv_win", "1600"])
     flow_actions.submit()
     xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
+    print("+++++test set recv win finish! ++++++++")
 
 def test_set_flow_prio_ingress(xdp_tester):
     print("+++++test flow prio ingress 1 ++++++++")
-    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='S', window = 100,  options=[(30,b'\x51'),(1,b'')])
-    epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='S', window = 100,  options=[(30,b'\x51'),(1,b''), (30,b'\x51'),(1,b'')])
+    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='SA', window = 100,  options=[(30,b'\x51'),(1,b'')])
+    epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='SA', window = 100,  options=[(30,b'\x51'),(1,b'')])
 
     flow_actions = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.131")
     flow_actions.add("set_flow_prio", backup = 1, addr_id = None)
@@ -90,8 +81,8 @@ def test_set_flow_prio_ingress(xdp_tester):
     print("+++++finish test flow prio ingress 1 ++++++++")
 
     print("+++++test flow prio ingress 2 ++++++++")
-    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='S', window = 100,  options=[(30,b'\x51'),(1,b'')])
-    epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='S', window = 100,  options=[(30,b'\x51'),(1,b''), (30,b'\x50\x02')])
+    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 100,  options=[(30,b'\x51'),(1,b'')])
+    epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 100,  options=[(30,b'\x51'),(1,b''), (30,b'\x50\x02')])
 
     flow_actions = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.131")
     flow_actions.add("set_flow_prio", backup = 0, addr_id = 2)
@@ -99,31 +90,43 @@ def test_set_flow_prio_ingress(xdp_tester):
     xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
     print("+++++finish test flow prio ingress 2 ++++++++")
 
+def test_action_chain(xdp_tester):
+    print("+++++test action chain 1(set win + set prio) ++++++++")
+    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 100,  options=[(30,b'\x51'),(1,b'')])
+    epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 1600,  options=[(30,b'\x51'),(1,b''), (30,b'\x51'),(1,b'')])
+
+    flow_actions = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.131")
+    flow_actions.add("set_recv_win", arg_list = ["--recv_win", "1600"])
+    flow_actions.add("set_flow_prio", backup = 1, addr_id = None)
+    flow_actions.submit()
+    xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
+    print("+++++finish test action chain 1 ++++++++")
+
+    print("+++++test action chain 2(set win)++++++++")
+    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 100,  options=[(30,b'\x51'),(1,b'')])
+    epkt = pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 1600,  options=[(30,b'\x51'),(1,b'')])
+
+    xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
+    print("+++++test action chain 2 ++++++++")
+
 if __name__ == '__main__': 
     xdp_main = None 
     tailcall_loader = None 
-    loader = BPFObjectLoader
-    try :
-      xdp_main = load(XDP_MAIN, loader)
-      xdp_actions_fd = xdp_main.get_map_fd(XDP_ACTIONS)
-      tailcall_loader = TailCallLoader(xdp_actions_fd, XDP_TAIL_CALL_LIST, loader)
+    loader = BPFBCCLoader
+    with load(XDP_MAIN, loader, unpin_only_fail=False) as xdp_main:
+      prog_array_fd = xdp_main.get_map_fd(XDP_ACTIONS)
+      with TailCallLoader(prog_array_fd, XDP_TAIL_CALL_LIST, loader, clear_only_fail=False) as tl:
+        try:
+          FlowIngressAction.config()
+          tester = XDPTestCase()
+          tester.setup(xdp_main.get_prog_fd("xdp_main"))
 
-      tester = XDPTestCase()
-      tester.setup(xdp_main.get_prog_fd("xdp_main"))
-
-      print("start test")
-      
-      #test_set_recv_win_ingress(tester)
-      test_set_flow_prio_ingress(tester)
-      
-      print("end test")
-      
-      xdp_main.unpin()
-      tailcall_loader.clear()
-    except Exception as e:
-      print(e)
-      if xdp_main != None :
-        xdp_main.unpin()
-      if tailcall_loader != None: 
-        tailcall_loader.clear()
+          print("start test")
+          
+          test_set_recv_win_ingress(tester)
+          test_set_flow_prio_ingress(tester)
+          test_action_chain(tester)
+          print("end test")    
+        except Exception as e:
+          print(e)
 

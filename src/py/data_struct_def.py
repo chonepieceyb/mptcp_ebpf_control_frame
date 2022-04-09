@@ -44,7 +44,7 @@ class param_union(ct.Union):
         ("mem", mem_param)
     ]
 
-class action(ct.Structure):
+class action_t(ct.Structure):
     _fields_  = [\
         ("param_type", ct.c_uint8, 2),\
         ("index", ct.c_uint8, 2),\
@@ -53,12 +53,23 @@ class action(ct.Structure):
         ("u2", param_union)
     ]
 
-class subflow_xdp_actions(ct.Structure):
+xdp_action_t = action_t 
+
+class subflow_xdp_actions_t(ct.Structure):
     _fields_  = [\
-        ("version", ct.c_uint8),\
-        ("actions", action * CONFIG.subflow_max_action_num),\
-        ("params", ct.c_byte * CONFIG.subflow_param_bytes)
+        ("actions", xdp_action_t * CONFIG.subflow_max_action_num)
     ]
+    
+xdp_action_value_t = subflow_xdp_actions_t
+
+class action_flag_key_t(ct.Structure):
+    _fields_  = [\
+        ("flow", flow_key_t),\
+        ("action", action_t)
+    ]
+
+xdp_action_flag_key_t = action_flag_key_t
+xdp_action_flag_t = ct.c_uint8
 
 class flow_prio_param_t(ct.Structure): 
     _fields_  = [\
@@ -68,7 +79,7 @@ class flow_prio_param_t(ct.Structure):
         ("address_id", ct.c_uint8)
     ]
 
-xdp_action_value_t = subflow_xdp_actions
+
 
 if __name__ == '__main__':
     print(ct.sizeof(flow_prio_param_t))

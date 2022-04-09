@@ -1,6 +1,5 @@
 #-*- coding:utf-8 -*-
 from ctypes import byref
-from xmlrpc.client import Boolean, boolean
 from bpf_map_def import *
 from abc import abstractmethod
 from data_struct_def import *
@@ -46,9 +45,9 @@ class SetRecvWinIngress(ActionBase):
         '''
         return action , param_bytes
         '''
-        a = action()
+        a = xdp_action_t()
         setzero(a)
-        a.param_tyep = param_type_t.IMME
+        a.param_type = param_type_t.IMME
         a.u1.action = self._get_tail_index()
         a.u2.imme = ct.c_uint16(self.recv_win).value
         return a , None 
@@ -77,9 +76,9 @@ class SetFlowPrioIngress(ActionBase):
 
     def dump(self):
         '''
-        return action , param_bytes
+        return action
         '''
-        a = action()
+        a = xdp_action_t()
         setzero(a)
         a.param_tyep = param_type_t.IMME
         a.u1.action = self._get_tail_index()

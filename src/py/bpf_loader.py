@@ -1,4 +1,5 @@
 #-*- coding:utf-8 -*-
+from sys import implementation
 from bcc import BPF
 import os
 from abc import abstractmethod
@@ -7,6 +8,13 @@ from libbpf import *
 from utils import unpin
 from error import *
 from enum import IntEnum, unique
+
+def bpf_check_load(cls_func):
+    def check_load(*args, **kw):
+        if args[0].loaded == None or args[0].loaded == False :
+            raise BPFLoadError("bpf loader init but unload")
+        return cls_func(*args, **kw)
+    return check_load
 
 class BPFLoaderBase: 
     @unique 
@@ -27,13 +35,61 @@ class BPFLoaderBase:
             flag = map_info["flag"]
         return flag 
 
-    def __init__(self, *, progs, pin_maps):
+    def __init__(self, *, progs, pin_maps, unpin_only_fail = True):
         self.runtime_progs = {}    
         self.runtime_maps = {}    
         self.progs = progs
         self.pin_maps = pin_maps 
-       
-    def unpin_maps(self):
+        self.unpin_only_fail = unpin_only_fail
+
+    def __enter__(self):
+        self.load()
+        return self
+
+    def __exit__(self, type, value, trace):
+        #fail 
+        fail = False 
+        if type != None or value != None or trace != None:
+            fail = True
+            print("type: ", type)
+            print("value: \n", value)
+            print("trace: \n", trace)
+        
+        #if fail unpin 
+        #if not fail unpin only when self.unpin_only_fail set False
+        if fail or self.unpin_only_fail == False:
+            self.unpin()
+
+    def load(self):
+        self._load()
+        self.loaded = True
+    
+    @bpf_check_load
+    def get_map_fd(self, name):
+        if name in self.runtime_maps and self.runtime_maps[name].fd >= 0:
+            return self.runtime_maps[name].fd
+        rt_info = self._get_map_runtime_info(name)
+        self.runtime_maps[name] = rt_info
+        return rt_info.fd
+    
+    @bpf_check_load
+    def get_prog_fd(self, name):
+        if name in self.runtime_progs and self.runtime_progs[name].fd >= 0:
+            return self.runtime_progs[name].fd
+        rt_info = self._get_prog_runtime_info(name)
+        self.runtime_progs[name] = rt_info
+        return rt_info.fd
+    
+    def unpin(self):
+        self._unpin_maps()
+        self._unpin_progs()
+
+    @abstractmethod
+    def _load(self):
+        #impelete by subclass
+        pass 
+    
+    def _unpin_maps(self):
         for name, rt_info in self.runtime_maps.items():
             if not rt_info.pinned:
                 continue 
@@ -46,7 +102,7 @@ class BPFLoaderBase:
             except Exception as e:
                 print(e)
     
-    def unpin_progs(self):
+    def _unpin_progs(self):
         for name , rt_info in self.runtime_progs.items():
             if not rt_info.pinned:
                 continue
@@ -57,25 +113,6 @@ class BPFLoaderBase:
             except Exception as e:
                 print(e)
     
-    #回收bpf资源
-    def unpin(self):
-        self.unpin_maps()
-        self.unpin_progs()
-
-    def get_map_fd(self, name):
-        if name in self.runtime_maps and self.runtime_maps[name].fd >= 0:
-            return self.runtime_maps[name].fd
-        rt_info = self._get_map_runtime_info(name)
-        self.runtime_maps[name] = rt_info
-        return rt_info.fd
-    
-    def get_prog_fd(self, name):
-        if name in self.runtime_progs and self.runtime_progs[name].fd >= 0:
-            return self.runtime_progs[name].fd
-        rt_info = self._get_prog_runtime_info(name)
-        self.runtime_progs[name] = rt_info
-        return rt_info.fd
-
     @abstractmethod
     def _get_map_runtime_info(self, name):
         #implement by subclass
@@ -89,6 +126,8 @@ class BPFLoaderBase:
 class BPFPINLoader(BPFLoaderBase):
     def __init__(self, *, progs, pin_maps):
         super().__init__(progs=progs, pin_maps = pin_maps)
+    
+    def _load(self):
         for name, prog_info in self.progs.items(): 
             if not "pin_path" in prog_info: 
                 continue 
@@ -99,25 +138,22 @@ class BPFPINLoader(BPFLoaderBase):
         for name, map_info in self.pin_maps.items(): 
             fd = bpf_obj_get(map_info["pin_path"])
             self.runtime_maps[name] = BPFLoaderBase.BPFRunTimeInfo(fd, True)
+    
+    def __exit__(self, type, value, trace):
+        pass
 
     def _get_map_runtime_info(self, name):
         raise BPFLoadError("BPFPINLoader only load pinned map")
 
     def _get_prog_runtime_info(self, name):
         raise BPFLoadError("BPFPINLoader only load pinned prog")
-
-    def unpin_maps(self):
-        raise BPFLoadError("BPFPINLoader not support unpin maps")
-
-    def unpin_progs(self):
-        raise BPFLoadError("BPFPINLoader not support unpin progs")
     
     def unpin(self):
         raise BPFLoadError("BPFPINLoader not support unpin")
 
 class BPFObjectLoader(BPFLoaderBase):
-    def __init__(self, path, *, progs, pin_maps, **kw):
-        super().__init__(progs = progs, pin_maps = pin_maps)
+    def __init__(self, path, *, progs, pin_maps, unpin_only_fail = True, **kw):
+        super().__init__(progs = progs, pin_maps = pin_maps, unpin_only_fail = unpin_only_fail)
         '''
         load bpf object using libbpf 
         @param:
@@ -143,14 +179,15 @@ class BPFObjectLoader(BPFLoaderBase):
                             REUSE  won't
                 } 
         '''
-        try:
-            self.bpf_obj = bpf_object__open(os.path.abspath(path))
-            self.__load()
-        except Exception as e:
-            print("faild to init BPFObjectLoader", e)
-            self.unpin()  #不好定义析构函数 定义在这
-            raise e
-            
+        self.path = path
+    
+    def _load(self):
+        self.bpf_obj = bpf_object__open(os.path.abspath(self.path))
+        self.__pin_maps()
+        self.__set_progs_type()
+        bpf_object__load(self.bpf_obj)   #load bpf object
+        self.__pin_progs()               #pin progs
+
     def _get_map_runtime_info(self, name):
         if name in self.pin_maps:
             return BPFLoaderBase.BPFRunTimeInfo(bpf_obj_get(self.pin_maps[name]["pin_path"]), self.runtime_maps[name].pinned)
@@ -168,12 +205,6 @@ class BPFObjectLoader(BPFLoaderBase):
         
         prog_obj = bpf_object__find_program_by_name(self.bpf_obj, name)
         return BPFLoaderBase.BPFRunTimeInfo(bpf_program__fd(prog_obj), False)
-
-    def __load(self):
-        self.__pin_maps()
-        self.__set_progs_type()
-        bpf_object__load(self.bpf_obj)   #load bpf object
-        self.__pin_progs()               #pin progs
 
     def __pin_maps(self):
         for name, map_info in self.pin_maps.items():
@@ -236,7 +267,7 @@ class BPFObjectLoader(BPFLoaderBase):
             self.runtime_progs[name] = BPFLoaderBase.BPFRunTimeInfo(-1, True)
 
 class BPFBCCLoader(BPFLoaderBase): 
-    def __init__(self, path, *, progs, pin_maps, cflags = [], **kw):
+    def __init__(self, path, *, progs, pin_maps, cflags = [], unpin_only_fail = True,  **kw):
         '''
         compile bpf src file , load func and pin the func
         load bpf object using libbpf 
@@ -260,24 +291,26 @@ class BPFBCCLoader(BPFLoaderBase):
                             PIN_IF_NOT_EXIST depend on if pin object is created by loader
                 } 
         '''
-        super().__init__(progs = progs, pin_maps = pin_maps) 
+        super().__init__(progs = progs, pin_maps = pin_maps, unpin_only_fail = unpin_only_fail) 
         
-        try:
-            self.funcs = {}
-            self.__check_pin_maps()
-            self.bpf = BPF(src_file = path, cflags = cflags)
-            self.__set_pin_maps()
-            self.__load_funcs_and_pin()
-        except Exception as e: 
-            self.unpin() 
-            raise e
+        self.path = path 
+        self.cflags = cflags
 
+    @bpf_check_load
     def get_table(self, name):
         return self.bpf.get_table(name)
 
+    @bpf_check_load
     def get_func(self, name):
         return self.funcs[name]
     
+    def _load(self):
+        self.funcs = {}
+        self.__check_pin_maps()
+        self.bpf = BPF(src_file = self.path, cflags = self.cflags)
+        self.__set_pin_maps()
+        self.__load_funcs_and_pin()
+
     def _get_map_runtime_info(self, name):
         if name in self.pin_maps:
             return BPFLoaderBase.BPFRunTimeInfo(bpf_obj_get(self.pin_maps[name]["pin_path"]), self.runtime_maps[name].pinned)
@@ -318,6 +351,132 @@ class BPFBCCLoader(BPFLoaderBase):
                 self.runtime_progs[name] = BPFLoaderBase.BPFRunTimeInfo(-1, False)
             self.funcs[name] = func
 
+def load(bpf, loader, unpin_only_fail = True):
+    if loader == BPFBCCLoader:
+        path_key = "src_path"
+    elif loader == BPFObjectLoader:
+        path_key = "obj_path"
+    else:
+        raise RuntimeError("invalid loader")
+    l = loader(bpf[path_key], progs = bpf["progs"], pin_maps = bpf["pin_maps"], unpin_only_fail = unpin_only_fail, **bpf["kw"])
+    return l 
+
+def get_name_idx_map(tail_call_list):
+    name_idx_map = {}
+    for list_idx, item in enumerate(tail_call_list):
+        for name, idx in item["tail_call_map"].items():
+            if name in name_idx_map:
+                raise RuntimeError("failed to set name_idx_map, tail call name :%s exists"%name)
+            val = {
+                "tail_call_idx" : int(idx),
+                "list_idx": int(list_idx)
+            }
+            name_idx_map[name] = val
+    return name_idx_map
+
+def get_idx_name_map(tail_call_list):
+    idx_name_map = {}
+    for list_idx, item in  enumerate(tail_call_list):
+        for name, idx in item["tail_call_map"].items():
+            if str(idx) in idx_name_map:
+                raise RuntimeError("failed to set name_idx_map, tail call idx :%d exists"%idx)
+            val = {
+                "tail_call_name" : name,
+                "list_idx" : list_idx
+            }
+            idx_name_map[str(idx)] = val
+    return idx_name_map
+
+class TailCallLoader: 
+    def __init__(self, prog_array_fd, tail_call_list, loader = BPFBCCLoader, * , clear_only_fail = True):
+        '''
+            tail_call_dict : [
+                {
+                    "src_path" : {
+
+                    },
+                    "obj_path" : {
+                        
+                    },
+                    "progs" : {
+
+                    },
+                    "pin_maps": {
+
+                    },
+                    "kw" : {
+                        
+                    }, 
+                    "tail_call_map" : {
+                        "name" : index,
+                    }
+                }
+            ]
+        '''
+        
+        self.name_idx_map = get_idx_name_map(tail_call_list)
+        self.prog_array_fd = prog_array_fd
+        self.bpf_loaders = []
+        self.tail_call_map = {}  # key : tail_call_index, value : fd 
+        self.loaded_tail_call_map = {}
+        self.clear_only_fail = clear_only_fail
+        for item in tail_call_list:
+            self.bpf_loaders.append(load(item, loader, unpin_only_fail=self.clear_only_fail))
+    
+    def __enter__(self):
+        self.load()
+        return self
+
+    def __exit__(self, type, value, trace):
+        fail = False 
+        if type != None or value != None or trace != None:
+            fail = True
+            print("type: ", type)
+            print("value: \n", value)
+            print("trace: \n", trace)
+        
+        #if fail unpin 
+        #if not fail unpin only when self.unpin_only_fail set False
+        if fail or self.clear_only_fail == False:
+            self.clear()
+
+    def load(self):
+        self._load_bpf_loader()
+        self._set_tail_call_map()
+        self._load_prog_array()
+        self.loaded = True
+
+    def clear(self):
+        self._unload_prog_array()
+        self._unpin()
+
+    def _unload_prog_array(self):
+        for key, _ in self.loaded_tail_call_map.items():
+            tail_call_index = ct.c_int(int(key))
+            bpf_map_delete_elem(self.prog_array_fd, ct.byref(tail_call_index))
+
+    def _unpin(self):
+        for loader in self.bpf_loaders:
+            loader.unpin()
+
+    def _load_bpf_loader(self):
+        for bpf_loader in self.bpf_loaders:
+            bpf_loader.load()
+
+    def _set_tail_call_map(self):
+        for idx_str, val in self.name_idx_map.items():
+            list_idx = int(val["list_idx"])
+            func_name = val["tail_call_name"]
+            fd = self.bpf_loaders[list_idx].get_prog_fd(func_name)
+            self.tail_call_map[idx_str] = fd
+
+    def _load_prog_array(self):
+        for key, fd in self.tail_call_map.items():
+            tail_call_index = ct.c_int(int(key))
+            fd_c = ct.c_int(fd)
+            bpf_map_update_elem(self.prog_array_fd, ct.byref(tail_call_index), ct.byref(fd_c))
+            self.loaded_tail_call_map[key] = fd
+    
 def unpin_maps(pin_maps):
     for _, map_info in pin_maps.items():
         flag = BPFLoaderBase.get_pin_map_flag(map_info)
@@ -333,158 +492,7 @@ def unpin_obj(bpf_obj_info):
     unpin_progs(bpf_obj_info["progs"])
     unpin_maps(bpf_obj_info["pin_maps"])
 
-# test program 
-if __name__ == '__main__': 
-    from common import *
-    
-    XDP_ACTIONS = "xdp_actions"
-    XDP_ACTIONS_PATH = os.path.join(BPF_VFS_PREFIX, CONFIG.progect_pin_prefix, XDP_ACTIONS)
-    SUBFLOW_ACTION_INGRESS = "subflow_action_ingress"
-    SUBFLOW_ACTION_INGRESS_PATH = os.path.join(BPF_VFS_PREFIX, CONFIG.progect_pin_prefix, SUBFLOW_ACTION_INGRESS)
-    test_prog = {
-        "src_path" : os.path.join(XDP_PROG_PATH, "xdp_main.c"),
-        "obj_path" : os.path.join(BPF_XDP_OBJS_PATH, "xdp_main.c.o"),
-        "progs" : {
-            "xdp_main" : {
-                "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_XDP,
-                "pin_path" : "/sys/fs/bpf/mptcp_ebpf_control_frame/xdp_main"
-            }
-        },
-        "pin_maps" : {
-            "xdp_actions" : {
-                "pin_path" : XDP_ACTIONS_PATH,
-                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN
-            },
-            "subflow_action_ingress": {
-                "pin_path" : SUBFLOW_ACTION_INGRESS_PATH,
-                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN
-            }
-        },
-        "kw": {
-            "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g", "-O2"]
-        }
-    }
 
-    test_prog2 = {
-        "src_path" : os.path.join(XDP_PROG_PATH, "xdp_main.c"),
-        "obj_path" : os.path.join(BPF_XDP_OBJS_PATH, "xdp_main.c.o"),
-        "progs" : {
-            "xdp_main" : {
-                "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_XDP
-            }
-        },
-        "pin_maps" : {
-            "xdp_actions" : {
-                "pin_path" : XDP_ACTIONS_PATH,
-                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
-            },
-            "subflow_action_ingress": {
-                "pin_path" : SUBFLOW_ACTION_INGRESS_PATH,
-                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
-            }
-        },
-        "kw": {
-            "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g", "-O2"]
-        }
-    }
-
-    test_prog3 = {
-        "src_path" : os.path.join(XDP_PROG_PATH, "xdp_main.c"),
-        "obj_path" : os.path.join(BPF_XDP_OBJS_PATH, "xdp_main.c.o"),
-        "progs" : {
-            "xdp_main" : {
-                "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_XDP
-            }
-        },
-        "pin_maps" : {
-            "xdp_actions" : {
-                "pin_path" : XDP_ACTIONS_PATH,
-                "flag" : BPFLoaderBase.PIN_MAP_FLAG.REUSE
-            },
-            "subflow_action_ingress": {
-                "pin_path" : SUBFLOW_ACTION_INGRESS_PATH,
-                "flag" : BPFLoaderBase.PIN_MAP_FLAG.REUSE
-            }
-        },
-        "kw": {
-            "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g", "-O2"]
-        }
-    }
-
-
-    '''
-        obj_loader = None 
-        obj_loader2 = None
-        obj_loader3 = None
-        print("test bpf object loader")
-        try :
-            
-
-            obj_loader = BPFObjectLoader(test_prog["obj_path"], progs = test_prog["progs"], pin_maps = test_prog["pin_maps"])
-            print("actions fd%s"%obj_loader.get_map_fd("xdp_actions"))
-            print("subflows fd%s"%obj_loader.get_map_fd("subflow_action_ingress"))
-            print("xdp mian fd%s"%obj_loader.get_prog_fd("xdp_main"))
-
-            obj_loader2 = BPFObjectLoader(test_prog2["obj_path"], progs = test_prog2["progs"], pin_maps = test_prog2["pin_maps"])
-            print("actions fd%s"%obj_loader2.get_map_fd("xdp_actions"))
-            print("subflows fd%s"%obj_loader2.get_map_fd("subflow_action_ingress"))
-            print("xdp mian fd%s"%obj_loader2.get_prog_fd("xdp_main"))
-
-            #load by object
-            obj_loader3 = BPFObjectLoader(test_prog3["obj_path"], progs = test_prog3["progs"], pin_maps = test_prog3["pin_maps"])
-            print("actions fd%s"%obj_loader3.get_map_fd("xdp_actions"))
-            print("subflows fd%s"%obj_loader3.get_map_fd("subflow_action_ingress"))
-            print("xdp mian fd%s"%obj_loader3.get_prog_fd("xdp_main"))
-            while True: 
-                try :
-                    pass
-                except KeyboardInterrupt:
-                    if obj_loader != None: 
-                        obj_loader.unpin()
-                    if obj_loader2 != None: 
-                        obj_loader2.unpin()  
-                    if obj_loader3 != None: 
-                        obj_loader3.unpin()  
-                    exit()
-
-        except Exception as e: 
-            if obj_loader != None: 
-                obj_loader.unpin()
-            if obj_loader2 != None: 
-                obj_loader2.unpin()  
-            if obj_loader3 != None: 
-                obj_loader2.unpin()  
-            print(e)
-    '''
-
-    print("test bcc loader")
-    bcc_loader2 = None 
-    
-    try :
-    
-        bcc_loader2 = BPFBCCLoader(test_prog2["src_path"], progs = test_prog2["progs"], pin_maps = test_prog2["pin_maps"],  cflags = ["-I%s"%SRC_BPF_KERN_PATH, "-g", "-O2"])
-        print("actions fd%s"%bcc_loader2.get_map_fd("xdp_actions"))
-        print("subflows fd%s"%bcc_loader2.get_map_fd("subflow_action_ingress"))
-        print("xdp mian fd%s"%bcc_loader2.get_prog_fd("xdp_main"))
-        
-        #test pin loader 
-        print("test pin loader")
-        pin_loader = BPFPINLoader(progs = test_prog2["progs"], pin_maps = test_prog2["pin_maps"])
-        print("actions fd%s"%pin_loader.get_map_fd("xdp_actions"))
-        print("subflows fd%s"%pin_loader.get_map_fd("subflow_action_ingress"))
-        while True: 
-            try :
-                pass
-            except KeyboardInterrupt:
-                unpin_obj(test_prog2)
-                exit()
-
-    except Exception as e: 
-        if bcc_loader2 != None: 
-            bcc_loader2.unpin()  
-        print(e)
-
-    
 
     
     

@@ -10,87 +10,35 @@ from utils import *
 from libbpf import *
 from bpf_map_def import *
 from socket import if_nametoindex
+from action_tool import FlowIngressAction
 
-class TailCallLoader: 
-    def __init__(self, prog_array_fd, tail_call_list, loader = BPFBCCLoader):
-        '''
-            tail_call_dict : [
-                {
-                    "src_path" : {
+#测试用函数
+def test_set_action():
+    FlowIngressAction.config()
+    flow_1 = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.132")
+    flow_1.add("set_flow_prio", backup = 1, addr_id = None)
+    flow_1.submit()
 
-                    },
-                    "obj_path" : {
-                        
-                    },
-                    "progs" : {
+    flow_2 = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.133")
+    flow_2.add("set_flow_prio", backup = 1, addr_id = None)
+    flow_2.submit()
 
-                    },
-                    "pin_maps": {
+    flow_3 = FlowIngressAction(local_addr = "172.16.12.129", peer_addr = "172.16.12.131")
+    flow_3.add("set_flow_prio", backup = 1, addr_id = None)
+    flow_3.submit()
 
-                    },
-                    "kw" : {
-                        
-                    }, 
-                    "tail_call_map" : {
-                        "name" : index,
-                    }
-                }
-            ]
-        '''
-        if loader == BPFBCCLoader:
-            path_key = "src_path"
-        elif loader == BPFObjectLoader:
-            path_key = "obj_path"
-        else:
-            raise RuntimeError("invalid loader")
-        
-        self.prog_array_fd = prog_array_fd
-        self.bpf_loader = []
-        self.tail_call_map = {}  # key : tail_call_index, value : fd 
-        try: 
-            for item in tail_call_list:
-                self.bpf_loader.append(loader(item[path_key], progs = item["progs"], pin_maps = item["pin_maps"], **item["kw"]))
-            self._set_tail_call_map()
-            self._load()
-        except Exception as e:
-            self.clear()
-            raise e 
+    flow_4 = FlowIngressAction(local_addr = "172.16.12.129", peer_addr = "172.16.12.133")
+    flow_4.add("set_flow_prio", backup = 1, addr_id = None)
+    flow_4.submit()
 
-    def unpin_maps(self):
-        for loader in self.bpf_loader:
-            loader.unpin_maps()
+    flow_5 = FlowIngressAction(local_addr = "172.16.12.130", peer_addr = "172.16.12.131")
+    flow_5.add("set_flow_prio", backup = 1, addr_id = None)
+    flow_5.submit()
 
-    def unpin_progs(self):
-        #delete prog fd in prog_array_fd
-        for loader in self.bpf_loader:
-            loader.unpin_progs()
-    
-    def unpin(self):
-        self.unpin_maps()
-        self.unpin_progs()
+    flow_6 = FlowIngressAction(local_addr = "172.16.12.130", peer_addr = "172.16.12.132")
+    flow_6.add("set_flow_prio", backup = 1, addr_id = None)
+    flow_6.submit()
 
-    def unload(self):
-        for key, _ in self.tail_call_map.items():
-            tail_call_index = ct.c_int(int(key))
-            bpf_map_delete_elem(self.prog_array_fd, ct.byref(tail_call_index))
-
-    def clear(self):
-        self.unload()
-        self.unpin()
-
-    def _set_tail_call_map(self):
-        for idx_str, val in XDP_TAILCALL_IDX_NAME_MAP.items():
-            list_idx = int(val["list_idx"])
-            func_name = val["tail_call_name"]
-            fd = self.bpf_loader[list_idx].get_prog_fd(func_name)
-            self.tail_call_map[idx_str] = fd
-
-    def _load(self):
-        for key, fd in self.tail_call_map.items():
-            tail_call_index = ct.c_int(int(key))
-            fd_c = ct.c_int(fd)
-            bpf_map_update_elem(self.prog_array_fd, ct.byref(tail_call_index), ct.byref(fd_c))        
-                
 #为了方便暂时先使用bcc来加载，之后为了统一，考虑修改成使用 libbpf进行加载
 class XdpLoader: 
     def __init__(self, interfaces, xdp_main, tail_call_list, loader): 
@@ -107,24 +55,14 @@ class XdpLoader:
         assert(len(self.interfaces) > 0)
 
     def attach(self): 
-        xdp_main = None 
-        tailcall_loader = None
-        try:
-            xdp_main = self.loader(XDP_MAIN[self.path_key], progs = XDP_MAIN["progs"], pin_maps = XDP_MAIN["pin_maps"], **XDP_MAIN["kw"])
-            xdp_actions_fd = xdp_main.get_map_fd(XDP_ACTIONS)
-            tailcall_loader = TailCallLoader(xdp_actions_fd, XDP_TAIL_CALL_LIST, self.loader)
-
-            #暂时只支持用bcc load
-            for interface in self.interfaces: 
-                print("atttach xdp to %s"%interface)
-                #BPF.attach_xdp(interface, xdp_main.get_func("xdp_main"), flags=BPF.XDP_FLAGS_UPDATE_IF_NOEXIST)
-                bpf_xdp_attach(if_nametoindex(interface), xdp_main.get_prog_fd("xdp_main"), XDP_FLAGS.XDP_FLAGS_UPDATE_IF_NOEXIST, ct.c_void_p(None))
-        except Exception as e: 
-            if xdp_main != None: 
-                xdp_main.unpin()
-            if tailcall_loader != None:
-                tailcall_loader.clear()
-            print(e)
+        with load(XDP_MAIN, self.loader, unpin_only_fail=True) as xdp_main:
+            prog_array_fd = xdp_main.get_map_fd(XDP_ACTIONS)
+            with TailCallLoader(prog_array_fd, XDP_TAIL_CALL_LIST, self.loader, clear_only_fail=True) as tl:
+                for interface in self.interfaces: 
+                    print("atttach xdp to %s"%interface)
+                    #BPF.attach_xdp(interface, xdp_main.get_func("xdp_main"), flags=BPF.XDP_FLAGS_UPDATE_IF_NOEXIST)
+                    bpf_xdp_attach(if_nametoindex(interface), xdp_main.get_prog_fd("xdp_main"), XDP_FLAGS.XDP_FLAGS_UPDATE_IF_NOEXIST, ct.c_void_p(None))
+        test_set_action()
 
     def detach(self): 
         for interface in self.interfaces:

@@ -4,12 +4,19 @@ from config import CONFIG
 from utils import *
 from socket import inet_aton
 from libbpf import *
-from bpf_map_def import SUBFLOW_ACTION_INGRESS
+from bpf_map_def import *
+import random 
 
 INGRESS_ACTION_DICT = {
     "set_recv_win" : SetRecvWinIngress,
     "set_flow_prio" : SetFlowPrioIngress
 }
+
+def gen_version(choice):
+    if len(choice) == 0: 
+        return None, None
+    idx = random.randint(0,len(choice) - 1)
+    return choice[idx], idx 
 
 def flow_action_parse_args(arg_list):
     parser = argparse.ArgumentParser(description="init flow actions")
@@ -19,24 +26,22 @@ def flow_action_parse_args(arg_list):
     return vars(args)
 
 class FlowIngressAction:
-    
+    @classmethod
+    def config(cls):
+        cls.subflow_actions_fd = bpf_obj_get(SUBFLOW_ACTION_INGRESS_PATH)
+        cls.xdp_actions_flag_fd = bpf_obj_get(XDP_ACTIONS_FLAG_PATH)    
+
     @classmethod
     def print_raw_action(cls, a):
         action_str = """param_type: %d
-action: %d %s"""
-
-        if a.param_type == param_type_t.IMME:
-            param_str = """
-imme : %d"""%a.u2.imme 
-        else:
-            param_str = """
-offset:%d
-version:%d"""%(a.u2.offset, a.u2.version)
-        return action_str%(a.param_type, a.u1.action, param_str)
+index: %u
+version: %u
+action: %u
+param: 0x%x"""%(a.param_type, a.index, a.version, a.u1.action, a.u2.imme)
+        return action_str
 
     @ArgWrapper(flow_action_parse_args)
     def __init__(self, *, local_addr, peer_addr):
-        self.subflow_actions_fd = bpf_obj_get(SUBFLOW_ACTION_INGRESS_PATH)
         self.local_addr = local_addr.strip('"')
         self.peer_addr = peer_addr.strip('"')
         #self.local_addr = "127.0.0.1"
@@ -47,31 +52,62 @@ version:%d"""%(a.u2.offset, a.u2.version)
         self.flow_key.peer_addr =  bytes_2_val(inet_aton(self.peer_addr))
         self.subflow_actions = xdp_action_value_t()
         setzero(self.subflow_actions)
+
+        self.flag_key = xdp_action_flag_key_t()
+        setzero(self.flag_key)
+        self.flag_key.flow = self.flow_key 
+
         self.action_count = 0
         self.action_objs = []
-
+        
     def add(self, name, **kw):
         if self.action_count >= CONFIG.subflow_max_action_num:
             raise RuntimeError("fail to add action : too much action, max_action_num :%d"%CONFIG.subflow_max_action_num)
         action_obj = INGRESS_ACTION_DICT[name](**kw)
         self.action_objs.append(action_obj)
         action_dump, _ = action_obj.dump()
-        self.subflow_actions.actions[self.action_count] = action_dump 
-        self.action_count += 1
+        action_dump.index = self.action_count
+        
+        #try to get version
+        choice = list(range(0, 16))    #version 4 bits 
+        val = xdp_action_flag_t(1)
+        MAX_TRY_TIME = 5
+        success = False 
+        if need_meta(action_dump.u1.action): 
+            flag_key = self.flag_key
+            for _ in range(MAX_TRY_TIME):
+                try: 
+                    ver, idx = gen_version(choice)
+                    choice.pop(idx)
+                    action_dump.version = ver 
+                    flag_key.action = action_dump
+                    bpf_map_update_elem(FlowIngressAction.xdp_actions_flag_fd, ct.byref(flag_key), ct.byref(val), BPF_MAP_UPDATE_ELEM_FLAG.BPF_NOEXIST)
+                    success = True
+                    break
+                except LinuxError as e:
+                    print(e)
+                    print("retry")
+        else:
+            success = True
+
+        if success : 
+            self.subflow_actions.actions[self.action_count] = action_dump 
+            self.action_count += 1
+        else:
+            raise RuntimeError("bpf xdp action flag busy! retry after some time")
 
     def submit(self):
         self.print_subflow_action()
-        bpf_map_update_elem(self.subflow_actions_fd, ct.byref(self.flow_key), ct.byref(self.subflow_actions))
+        bpf_map_update_elem(FlowIngressAction.subflow_actions_fd, ct.byref(self.flow_key), ct.byref(self.subflow_actions))
 
     def print_subflow_action(self, print_human = True): 
-        print("version: %d"%self.subflow_actions.version)
         for i in range(self.action_count):
             a = self.subflow_actions.actions[i]
             print(FlowIngressAction.print_raw_action(a),end = "")
             if print_human: 
                 print()
                 print(self.action_objs[i].print(), end = "")
-            print()
+            print('\n')
 
     def print_flow_info(self):
         return "local_addr: %s, peer_addr %s"%(self.local_addr, self.peer_addr)
@@ -194,8 +230,8 @@ class Tool:
             print("%s : %s"%(cmd, info["desc"]))
 
 if __name__ == '__main__':
-    import sys
-    ip = "127.0.0.1"
-    t = Tool()
-    t.run()
+    FlowIngressAction.config()
+    flow_actions = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.131")
+    flow_actions.add("set_flow_prio", backup = 1, addr_id = 2)
+    flow_actions.submit()
         
