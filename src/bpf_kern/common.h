@@ -322,10 +322,9 @@ struct subflow_meta {
 #define SUBFLOW_MAX_ACTION_NUM 4
 #define SUBFLOW_PARAM_BYTES 20
 #define SUBFLOW_ACTION_INGRESS_PATH "/sys/fs/bpf/mptcp_ebpf_control_frame/subflow_action_ingress"
-#define XDP_ACTIONS_META_SIZE 2048
-#define XDP_ACTIONS_META_PATH  "sys/fs/bpf/mptcp_ebpf_control_frame/xdp_actions_meta"
+#define XDP_ACTIONS_FLAG_SIZE 20000
+#define XDP_ACTIONS_FLAG_PATH  "/sys/fs/bpf/mptcp_ebpf_control_frame/xdp_actions_flag"
 
-typedef int xdp_action_meta_t;
 
 enum param_type {
     IMME = 0,
@@ -369,9 +368,16 @@ struct action_t {
 
 typedef struct action_t xdp_action_t; 
 
+struct action_flag_key_t {
+    flow_key_t flow;
+    struct action_t action;
+};
+typedef struct action_flag_key_t xdp_action_flag_key_t;
+
+typedef __u8 xdp_action_flag_t;
+
 struct subflow_xdp_actions_t {
     xdp_action_t actions[SUBFLOW_MAX_ACTION_NUM];
-    char params[SUBFLOW_PARAM_BYTES];
 };
 
 typedef struct subflow_xdp_actions_t xdp_subflow_action_t;

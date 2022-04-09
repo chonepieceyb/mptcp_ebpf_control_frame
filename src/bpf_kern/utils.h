@@ -299,6 +299,26 @@ static __always_inline int pop_xdp_action(struct xdp_md *ctx) {
     }
 }
 
+//return 0 if success
+static __always_inline int get_and_pop_xdp_action(struct xdp_md *ctx, xdp_action_t *a) {
+    int res;
+    res = get_xdp_action(ctx, a);
+    if (res < 0) {
+        goto fail;
+    }
+
+    //pop action
+    res = pop_xdp_action(ctx);
+    if (res < 0) {
+        goto fail;
+    }
+    
+    return 0;
+
+fail:
+    return res;
+}
+
 static __always_inline void get_ingress_flow_key(const struct iphdr *iph, const struct tcphdr *tcph, flow_key_t *flow_key) {
     flow_key->local_addr = iph->daddr;
     flow_key->peer_addr = iph->saddr;

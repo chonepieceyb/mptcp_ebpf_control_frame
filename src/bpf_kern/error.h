@@ -8,6 +8,7 @@
 #define POP_XDP_ACTION_FAILED           1005
 #define XDP_GROW_TCP_HEADER_FAIL        1006
 #define XDP_ADD_TCP_OPT_FAIL            1007
+#define XDP_TAIL_CALL_FAIL              1008
 #define NOT_TARGET                      1
 
 #endif
