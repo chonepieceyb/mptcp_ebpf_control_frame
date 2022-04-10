@@ -103,7 +103,7 @@ XDP_TAILCALL_IDX_NAME_MAP = get_idx_name_map(XDP_TAIL_CALL_LIST)
 
 XDP_ACTION_META_MAP = {
     "1" : False,   #set_recv_win_ingress
-    "2" : True,    # set_flow_priority_ingress
+    "2" : False,    # set_flow_priority_ingress
 } 
 
 def need_meta(action):

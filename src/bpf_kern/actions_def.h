@@ -9,6 +9,6 @@
 
 #define XDP_ACTION_META_BITMAP (0 |             \
         (0 << (SET_RECV_WIN_IN_AID)) |          \
-        (1 << (SET_FLOW_PRIO_IN_AID)))
+        (0 << (SET_FLOW_PRIO_IN_AID)))
 
 #endif 

@@ -35,7 +35,7 @@ struct flow_prio_param_t {
 SEC("xdp")
 #endif 
 int set_flow_priority_ingress(struct xdp_md *ctx) {
-    bpf_trace_printk("set_flow_priority ingress begin\n");
+    //bpf_trace_printk("set_flow_priority ingress begin\n");
     int res;
 
 /*
@@ -166,15 +166,15 @@ next_action:
     res = -XDP_TAIL_CALL_FAIL;
 
 fail_modify:
-    bpf_trace_printk("set flow prio fail modify, res: %d\n", res);
+   // bpf_trace_printk("set flow prio fail modify, res: %d\n", res);
     return XDP_DROP;
 
 finish:
-    bpf_trace_printk("set flow prio finish , res: %d\n", res);
+   // bpf_trace_printk("set flow prio finish , res: %d\n", res);
     return XDP_PASS;
 
 fail_no_modify: 
-    bpf_trace_printk("set flow prio no modify, res: %d\n", res);
+   // bpf_trace_printk("set flow prio no modify, res: %d\n", res);
     return XDP_PASS;
 }
 
