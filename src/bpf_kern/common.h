@@ -1,11 +1,13 @@
 #ifndef MPTCP_EBPF_CONTROL_FRAME_COMMON_H
 #define MPTCP_EBPF_CONTROL_FRAME_COMMON_H
 
-#include <linux/stddef.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
+#include <linux/types.h>
+#include <linux/in.h>
+#include <linux/in6.h>
 
 #ifdef NOBCC
 

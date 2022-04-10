@@ -1,7 +1,7 @@
 #ifndef MPTCP_EBPF_CONTROL_FRAME_H
 #define MPTCP_EBPF_CONTROL_FRAME_H
 
-#include <linux/stddef.h>
+#include <stddef.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <linux/ip.h>
