@@ -1,7 +1,6 @@
 #ifndef MPTCP_EBPF_CONTROL_FRAME_H
 #define MPTCP_EBPF_CONTROL_FRAME_H
 
-#include <stddef.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <linux/ip.h>
@@ -12,6 +11,7 @@
 
 #ifdef NOBCC
 
+#include <stddef.h>
 #include <linux/bpf.h> 
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>

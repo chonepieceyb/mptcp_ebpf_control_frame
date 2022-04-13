@@ -150,7 +150,7 @@ class ProgLoader:
             exit()
 
         self.tc_loader = TCLoader(interfaces)
-        self.xdp_loader = XdpLoader(interfaces, XDP_MAIN, XDP_TAIL_CALL_LIST, BPFObjectLoader)
+        self.xdp_loader = XdpLoader(interfaces, XDP_MAIN, XDP_TAIL_CALL_LIST, BPFBCCLoader)
         
     def run(self):
         if self.args.a:
