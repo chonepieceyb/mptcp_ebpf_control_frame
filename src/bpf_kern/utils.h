@@ -534,5 +534,38 @@ out_of_bound:
 static __always_inline void set_tcp_nop(__u8 *dst) {
     *dst = 0x01;
 }
+
+static __always_inline void set_tcp_nop2(__u16 *dst) {
+    *dst = 0x0101;
+}
+
 #endif 
 
+static __always_inline int xdp_rm_tcp_header(struct hdr_cursor *nh, void *data_end, struct tcphdr *tcph, __u16 size) {
+    //set option to nop and update checksum 
+    if ((size & 0x1) != 0) {
+        //size % 2 != 0
+        goto fail;
+    }
+
+    __u16 *pkt = nh->pos;
+    __u16 s2 = size >> 1;  
+
+#pragma unroll 20
+    for (int i = 0; i < 20; i++) {
+        if (i >= s2) break;
+        CHECK_BOUND(pkt, data_end);
+        __u16 old = *pkt;
+        //set nop
+        set_tcp_nop2(pkt);
+        csum_replace2(&tcph->check, old, 0x0101);
+        pkt++;
+    }
+
+    nh->pos = pkt;
+    return 0;
+fail:
+    return -1;  //no modified
+out_of_bound: 
+    return -2;  // modified 
+}

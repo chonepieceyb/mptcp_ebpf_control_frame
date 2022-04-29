@@ -90,6 +90,17 @@ def test_set_flow_prio_ingress(xdp_tester):
     xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
     print("+++++finish test flow prio ingress 2 ++++++++")
 
+def test_rm_addr(xdp_tester):
+    print("+++++test_rm_addr++++++++")
+    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', options=[(30,b'\x34\x05\xdf\x03\x44\x95'),(30, b'\x20\x01\xe5\x7f\x0c\x4f')])
+    epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', options=[(1,b''),(1,b''),(1,b''),(1,b''),(1,b''),(1,b''),(1,b''),(1,b''),(30, b'\x20\x01\xe5\x7f\x0c\x4f')])
+    
+    flow_actions = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.131")
+    flow_actions.add("rm_add_addr")
+    flow_actions.submit()
+    xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
+    print("+++++test_rm_addr finish! ++++++++")
+
 def test_action_chain(xdp_tester):
     print("+++++test action chain 1(set win + set prio) ++++++++")
     pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 100,  options=[(30,b'\x51'),(1,b'')])
@@ -102,17 +113,10 @@ def test_action_chain(xdp_tester):
     xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
     print("+++++finish test action chain 1 ++++++++")
 
-    print("+++++test action chain 2(set win)++++++++")
-    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 100,  options=[(30,b'\x51'),(1,b'')])
-    epkt = pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 1600,  options=[(30,b'\x51'),(1,b'')])
-
-    xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
-    print("+++++test action chain 2 ++++++++")
-
 if __name__ == '__main__': 
     xdp_main = None 
     tailcall_loader = None 
-    loader = BPFBCCLoader
+    loader = BPFObjectLoader
     with load(XDP_MAIN, loader, unpin_only_fail=False) as xdp_main:
       prog_array_fd = xdp_main.get_map_fd(XDP_ACTIONS)
       with TailCallLoader(prog_array_fd, XDP_TAIL_CALL_LIST, loader, clear_only_fail=False) as tl:
@@ -126,6 +130,7 @@ if __name__ == '__main__':
           test_set_recv_win_ingress(tester)
           test_set_flow_prio_ingress(tester)
           test_action_chain(tester)
+          test_rm_addr(tester)
           print("end test")    
         except Exception as e:
           print(e)

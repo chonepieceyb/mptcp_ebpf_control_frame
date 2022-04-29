@@ -95,6 +95,27 @@ XDP_TAIL_CALL_LIST = [
         "tail_call_map" : {
             "set_flow_priority_ingress" : 2
         }
+    },
+    {
+        "src_path" : os.path.join(XDP_PROG_PATH, "rm_add_addr_ingress.c"),
+        "obj_path" : os.path.join(BPF_XDP_OBJS_PATH, "rm_add_addr_ingress.c.o"),
+        "progs" : {
+            "rm_add_addr_ingress" : {
+                "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_XDP
+            }
+        },
+        "pin_maps" : {
+            XDP_ACTIONS : {
+                "pin_path" : XDP_ACTIONS_PATH,
+                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+            }
+        },
+        "kw": {
+            "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+        },
+        "tail_call_map" : {
+            "rm_add_addr_ingress" : 3
+        }
     }
 ]
 
@@ -104,6 +125,7 @@ XDP_TAILCALL_IDX_NAME_MAP = get_idx_name_map(XDP_TAIL_CALL_LIST)
 XDP_ACTION_META_MAP = {
     "1" : False,   #set_recv_win_ingress
     "2" : False,    # set_flow_priority_ingress
+    "3" : False,    # set_flow_priority_ingress
 } 
 
 def need_meta(action):

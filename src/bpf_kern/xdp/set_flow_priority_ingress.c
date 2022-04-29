@@ -56,7 +56,7 @@ int set_flow_priority_ingress(struct xdp_md *ctx) {
     struct flow_prio_param_t *flow_param; 
     if (a.param_type != IMME) {
         res = -INVALID_ACTION_ARGUMENT;
-        goto fail_no_modify;;
+        goto next_action;
     }
     flow_param = (struct flow_prio_param_t *)(&a.u2.imme);
 
@@ -108,7 +108,7 @@ int set_flow_priority_ingress(struct xdp_md *ctx) {
     }
     if (res == -2) {
         //res = -XDP_GROW_TCP_HEADER_FAIL;
-        goto fail_modify;
+        goto next_action;
     }
 
     data = (void *)(__u64)(ctx->data);

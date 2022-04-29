@@ -29,6 +29,34 @@ class ActionBase:
             raise RuntimeError("action name :%s not exists"%self.action_name)
         return name_idx_map[self.action_name]["tail_call_idx"]
 
+
+def rm_add_addr_parser(arg_list):
+    parser = argparse.ArgumentParser(description="rm_add_addr", prog = "remove add addr option")
+    args = parser.parse_args(arg_list)
+    return vars(args)
+
+class RemoveAddAddrIngress(ActionBase):
+    @ArgWrapper(rm_add_addr_parser)
+    def __init__(self):
+        super().__init__("rm_add_addr_ingress", Direction.INGRESS)
+
+    def dump(self):
+        '''
+        return action , param_bytes
+        '''
+        a = xdp_action_t()
+        setzero(a)
+        a.param_type = param_type_t.IMME
+        a.u1.action = self._get_tail_index()
+        return a , None 
+
+    def print(self):
+        '''
+        return print str 
+        '''
+        action_str = '''action_name: %s'''%self.action_name
+        return action_str
+
 def set_recv_win_arg_parser(arg_list):
     parser = argparse.ArgumentParser(description="set recv win ingress action", prog = "set recv win")
     parser.add_argument("--recv_win", type = int,  required = True, help = "set packet recv window (0-65535) << win_shift")

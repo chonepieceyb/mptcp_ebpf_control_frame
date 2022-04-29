@@ -12,42 +12,6 @@ from bpf_map_def import *
 from socket import if_nametoindex
 from action_tool import FlowIngressAction
 
-#测试用函数
-def test_set_action():
-    FlowIngressAction.config()
-    '''
-        flow_1 = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.132")
-        flow_1.add("set_flow_prio", backup = 1, addr_id = None)
-        flow_1.submit()
-
-        flow_2 = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.133")
-        flow_2.add("set_flow_prio", backup = 1, addr_id = None)
-        flow_2.submit()
-
-        flow_3 = FlowIngressAction(local_addr = "172.16.12.129", peer_addr = "172.16.12.131")
-        flow_3.add("set_flow_prio", backup = 1, addr_id = None)
-        flow_3.submit()
-
-        flow_4 = FlowIngressAction(local_addr = "172.16.12.129", peer_addr = "172.16.12.133")
-        flow_4.add("set_flow_prio", backup = 1, addr_id = None)
-        flow_4.submit()
-
-        flow_5 = FlowIngressAction(local_addr = "172.16.12.130", peer_addr = "172.16.12.131")
-        flow_5.add("set_flow_prio", backup = 1, addr_id = None)
-        flow_5.submit()
-
-        flow_6 = FlowIngressAction(local_addr = "172.16.12.130", peer_addr = "172.16.12.132")
-        flow_6.add("set_flow_prio", backup = 1, addr_id = None)
-        flow_6.submit()
-    '''
-    '''
-        flow_1 = FlowIngressAction(local_addr = "172.16.12.129", peer_addr = "172.16.12.132")
-        flow_1.add("set_flow_prio", backup = 1, addr_id = 5)
-        flow_1.submit()
-    '''
-    flow_2 = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.132")
-    flow_2.add("set_flow_prio", backup = 1, addr_id = 5)
-    flow_2.submit()
 #为了方便暂时先使用bcc来加载，之后为了统一，考虑修改成使用 libbpf进行加载
 class XdpLoader: 
     def __init__(self, interfaces, xdp_main, tail_call_list, loader): 
@@ -71,7 +35,6 @@ class XdpLoader:
                     print("atttach xdp to %s"%interface)
                     #BPF.attach_xdp(interface, xdp_main.get_func("xdp_main"), flags=BPF.XDP_FLAGS_UPDATE_IF_NOEXIST)
                     bpf_xdp_attach(if_nametoindex(interface), xdp_main.get_prog_fd("xdp_main"), XDP_FLAGS.XDP_FLAGS_UPDATE_IF_NOEXIST, ct.c_void_p(None))
-        test_set_action()
 
     def detach(self): 
         for interface in self.interfaces:
@@ -150,7 +113,7 @@ class ProgLoader:
             exit()
 
         self.tc_loader = TCLoader(interfaces)
-        self.xdp_loader = XdpLoader(interfaces, XDP_MAIN, XDP_TAIL_CALL_LIST, BPFBCCLoader)
+        self.xdp_loader = XdpLoader(interfaces, XDP_MAIN, XDP_TAIL_CALL_LIST, BPFObjectLoader)
         
     def run(self):
         if self.args.a:

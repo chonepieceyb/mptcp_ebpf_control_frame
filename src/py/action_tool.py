@@ -9,7 +9,8 @@ import random
 
 INGRESS_ACTION_DICT = {
     "set_recv_win" : SetRecvWinIngress,
-    "set_flow_prio" : SetFlowPrioIngress
+    "set_flow_prio" : SetFlowPrioIngress,
+    "rm_add_addr": RemoveAddAddrIngress
 }
 
 def gen_version(choice):
@@ -95,11 +96,19 @@ param: 0x%x"""%(a.param_type, a.index, a.version, a.u1.action, a.u2.imme)
             self.action_count += 1
         else:
             raise RuntimeError("bpf xdp action flag busy! retry after some time")
-
+    
     def submit(self):
+        print("submit: %s"%self.print_flow_info())
         self.print_subflow_action()
         bpf_map_update_elem(FlowIngressAction.subflow_actions_fd, ct.byref(self.flow_key), ct.byref(self.subflow_actions))
 
+    def delete(self):
+        try:
+            print("delete: %s"%self.print_flow_info())
+            bpf_map_delete_elem(FlowIngressAction.subflow_actions_fd, ct.byref(self.flow_key))
+        except Exception as e :
+            pass 
+        
     def print_subflow_action(self, print_human = True): 
         for i in range(self.action_count):
             a = self.subflow_actions.actions[i]

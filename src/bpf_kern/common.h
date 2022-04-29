@@ -65,6 +65,8 @@ struct bpf_elf_map {
 #define MPTCP_SUB_JOIN_FLAG			(1 << 1)
 #define MPTCP_SUB_DSS_FLAG		        (1 << 2)
 
+#define MPTCP_SUB_ADD_ADDR		        3
+
 struct tcp_flags {
 #if defined(__LITTLE_ENDIAN_BITFIELD)
 	__u16	res1:4,

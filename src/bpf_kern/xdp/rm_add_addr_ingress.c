@@ -18,7 +18,7 @@ BPF_TABLE_PINNED("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM, XDP_ACTIONS_
 #ifdef NOBCC
 SEC("xdp")
 #endif 
-int set_recv_win_ingress(struct xdp_md *ctx) {
+int rm_add_addr_ingress(struct xdp_md *ctx) {
     int res;
 /*
  **************action opt begin*************
@@ -27,21 +27,15 @@ int set_recv_win_ingress(struct xdp_md *ctx) {
     xdp_action_t a;   //4bytes 
     res = get_and_pop_xdp_action(ctx, &a);
     if (res < 0) {
-        goto fail;
-    //bpf_trace_printk("finish!");
+        goto fail_no_modify;
     }
     __u8 next_action = a.u1.next_action;
 /*
  * ************action opt end***************
  */
 
-    //get param
-    if (a.param_type != IMME) {
-        res = -INVALID_ACTION_ARGUMENT;
-        goto fail;
-    }
-    __be16 window = bpf_htons(a.u2.imme);
-
+    //rm add addr without param 
+    
     void *data = (void *)(__u64)(ctx->data);
     void *data_end = (void *)(__u64)(ctx->data_end);
 
@@ -53,17 +47,29 @@ int set_recv_win_ingress(struct xdp_md *ctx) {
 
     tcphl = res = is_tcp_packet(&nh, data_end, &eth, &iph, &tcph);
     
-    //bpf_trace_printk("finish!");
     if (res < 0) {
         res = -INTERNAL_IMPOSSIBLE;
-        goto fail;
+        goto fail_no_modify;
     }
     
+    //only work on tcp ack 
+    if (!(tcph->ack && !tcph->syn)) {
+        goto next_action;
+    }
     
-    //set window and update checksum;
-    csum_replace2(&tcph->check, tcph->window, window); 
-    tcph->window = window;
+    //get addr option
+    res = check_mptcp_opt(&nh, data_end, tcphl-20, MPTCP_SUB_ADD_ADDR);
+    if (res < 0) {
+        goto next_action;  //not our target 
+    }
+    struct mptcp_option *mptcp_opt = nh.pos;
+    CHECK_BOUND(mptcp_opt, data_end);
 
+    res =  xdp_rm_tcp_header(&nh, data_end, tcph, mptcp_opt->len);
+
+    if (res == -2) goto fail_modify;
+
+next_action:
     if (next_action == DEFAULT_ACTION) {
         goto finish;
     }
@@ -75,11 +81,16 @@ int set_recv_win_ingress(struct xdp_md *ctx) {
     xdp_actions.call(ctx, next_action);
 #endif
     res = XDP_TAIL_CALL_FAIL;
-fail: 
+
+fail_modify:
+    return XDP_DROP;
+
+fail_no_modify: 
     return XDP_PASS;
+
 finish:
-    //bpf_trace_printk("finish!");
     return XDP_PASS;
+
 out_of_bound:
     return XDP_PASS;
 }
