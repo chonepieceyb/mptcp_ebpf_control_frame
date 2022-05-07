@@ -11,36 +11,27 @@ struct {
 } xdp_actions SEC(".maps");
 
 #else
+
 BPF_TABLE_PINNED("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM, XDP_ACTIONS_PATH);
-//BPF_TABLE("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM);
+
 #endif
 
 #ifdef NOBCC
 SEC("xdp")
 #endif 
-int set_recv_win_ingress(struct xdp_md *ctx) {
+int set_recv_win_action(struct xdp_md *ctx) {
     int res;
-/*
- **************action opt begin*************
- */
-    //get action 
-    xdp_action_t a;   //4bytes 
-    res = get_and_pop_xdp_action(ctx, &a);
-    if (res < 0) {
-        goto fail;
-    //bpf_trace_printk("finish!");
-    }
-    __u8 next_action = a.u1.next_action;
-/*
- * ************action opt end***************
- */
+    
+    XDP_POLICY_PRE_SEC
+
+    xdp_action_t *a = (xdp_action_t *)(&POLICY);
 
     //get param
-    if (a.param_type != IMME) {
+    if (a->param_type != IMME) {
         res = -INVALID_ACTION_ARGUMENT;
         goto fail;
     }
-    __be16 window = bpf_htons(a.u2.imme);
+    __be16 window = bpf_htons(a->param.imme);
 
     void *data = (void *)(__u64)(ctx->data);
     void *data_end = (void *)(__u64)(ctx->data_end);
@@ -55,33 +46,31 @@ int set_recv_win_ingress(struct xdp_md *ctx) {
     
     //bpf_trace_printk("finish!");
     if (res < 0) {
-        res = -INTERNAL_IMPOSSIBLE;
+        res = -NOT_TCP;
         goto fail;
     }
-    
     
     //set window and update checksum;
     csum_replace2(&tcph->check, tcph->window, window); 
     tcph->window = window;
 
-    if (next_action == DEFAULT_ACTION) {
-        goto finish;
-    }
+    XDP_ACTION_POST_SEC
+ 
+#ifndef NOBCC
+next_action:                          
+    xdp_actions.call(ctx, NEXT_IDX);
+    res = -TAIL_CALL_FAIL;                      
+    goto fail;
+#endif 
 
-    //call next action
-#ifdef NOBCC
-    bpf_tail_call(ctx, &xdp_actions, next_action);
-#else
-    xdp_actions.call(ctx, next_action);
-#endif
-    res = XDP_TAIL_CALL_FAIL;
+out_of_bound:
 fail: 
     return XDP_PASS;
-finish:
+
+exit:
     //bpf_trace_printk("finish!");
     return XDP_PASS;
-out_of_bound:
-    return XDP_PASS;
+
 }
 #ifdef NOBCC
 char _license[] SEC("license") = "GPL";

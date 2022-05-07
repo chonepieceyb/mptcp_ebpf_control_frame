@@ -75,7 +75,3 @@ def unpin(p, prefix = BPF_VFS_PREFIX):
 
 def setzero(c_type_object):
     ct.memset(ct.byref(c_type_object), ct.c_int(0), ct.sizeof(c_type_object))
-
-if __name__ == '__main__':
-    flow_key = flow_key_t()
-    setzero(flow_key)

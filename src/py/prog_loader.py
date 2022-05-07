@@ -10,11 +10,10 @@ from utils import *
 from libbpf import *
 from bpf_map_def import *
 from socket import if_nametoindex
-from action_tool import FlowIngressAction
 
 #为了方便暂时先使用bcc来加载，之后为了统一，考虑修改成使用 libbpf进行加载
 class XdpLoader: 
-    def __init__(self, interfaces, xdp_main, tail_call_list, loader): 
+    def __init__(self, interfaces, loader): 
         if loader == BPFBCCLoader:
             self.path_key = "src_path"
         elif loader == BPFObjectLoader:
@@ -23,75 +22,90 @@ class XdpLoader:
             raise RuntimeError("invalid loader")
         self.loader = loader 
         self.interfaces = interfaces
-        self.xdp_main = xdp_main
-        self.tail_call_list = tail_call_list 
         assert(len(self.interfaces) > 0)
 
     def attach(self): 
-        with load(XDP_MAIN, self.loader, unpin_only_fail=True) as xdp_main:
-            prog_array_fd = xdp_main.get_map_fd(XDP_ACTIONS)
-            with TailCallLoader(prog_array_fd, XDP_TAIL_CALL_LIST, self.loader, clear_only_fail=True) as tl:
+        with load(XDP_SELECTOR_ENTRY, self.loader) as se, \
+            load(XDP_ACTION_ENTRY, self.loader) as ae: 
+            selectors_fd = se.get_map_fd(XDP_SELECTORS)
+            actions_fd = ae.get_map_fd(XDP_ACTIONS)
+            action_entry_idx = ct.c_int(ACTION_ENTRY_IDX)
+            action_entry_fd = ct.c_int(ae.get_prog_fd("action_entry"))
+            bpf_map_update_elem(actions_fd, ct.byref(action_entry_idx), ct.byref(action_entry_fd))
+            with TailCallLoader(selectors_fd, XDP_SELECTORS_TAIL_CALL_LIST, self.loader) as stl,\
+                TailCallLoader(actions_fd, XDP_ACTIONS_TAIL_CALL_LIST, self.loader) as atl:
                 for interface in self.interfaces: 
                     print("atttach xdp to %s"%interface)
                     #BPF.attach_xdp(interface, xdp_main.get_func("xdp_main"), flags=BPF.XDP_FLAGS_UPDATE_IF_NOEXIST)
-                    bpf_xdp_attach(if_nametoindex(interface), xdp_main.get_prog_fd("xdp_main"), XDP_FLAGS.XDP_FLAGS_UPDATE_IF_NOEXIST, ct.c_void_p(None))
+                    bpf_xdp_attach(if_nametoindex(interface), se.get_prog_fd("selector_entry"), XDP_FLAGS.XDP_FLAGS_UPDATE_IF_NOEXIST, ct.c_void_p(None))
 
     def detach(self): 
         for interface in self.interfaces:
             print("move xdp of %s"%interface)
             BPF.remove_xdp(interface)
-        
-        unpin_obj(self.xdp_main)
-        for obj in self.tail_call_list:
+        unpin_obj(XDP_SELECTOR_ENTRY)
+        unpin_obj(XDP_ACTION_ENTRY)
+        for obj in XDP_SELECTORS_TAIL_CALL_LIST:
+            unpin_obj(obj)
+        for obj in XDP_ACTIONS_TAIL_CALL_LIST:
             unpin_obj(obj)
 
-#使用 clsact disc 
-#https://arthurchiao.art/blog/understanding-tc-da-mode-zh/#1-%E8%83%8C%E6%99%AF%E7%9F%A5%E8%AF%86linux-%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6tc%E5%AD%90%E7%B3%BB%E7%BB%9F
-class TCLoader:
-    add_qdisc_cmd = "sudo tc qdisc add dev %s clsact"
-    add_tc_filter_cmd = "sudo tc filter add dev %s %s bpf %s obj %s"
-    del_qdisc_cmd = "tc qdisc del dev %s clsact"
-
-    def __init__(self, interfaces): 
+class TCEgressProgLoader: 
+    #load using libbpf 
+    def __init__(self, interfaces, loader): 
         '''
         @param: 
             interfaces: interfaces to be attach or detach 
         '''
-
         self.interfaces = interfaces
         assert(len(self.interfaces) > 0)
-    
-    #可能不是很完善先这样
-    def attach(self, targets) : 
-        assert(isinstance(targets, list))
-        assert(len(targets) > 0)    
-        
-        for interface in self.interfaces: 
-            print("add clsact qdisc to %s"%interface)
-            os.system(TCLoader.add_qdisc_cmd%interface)
-    
-            for target in targets:
-                cmd = self._assemble_attach_cmd(target, interface)
-                print(cmd)
-                os.system(cmd)
-        
+        self.loader = loader
 
-    def detach(self) : 
+    def attach(self):
+        self._create_hooks()
+        with load(TC_EGRESS_SELECTOR_ENTRY, self.loader) as se, \
+             load(TC_EGRESS_ACTION_ENTRY, self.loader) as ae: 
+            selectors_fd = se.get_map_fd(TC_EGRESS_SELECTORS)
+            actions_fd = ae.get_map_fd(TC_EGRESS_ACTIONS)
+            action_entry_idx = ct.c_int(ACTION_ENTRY_IDX)
+            action_entry_fd = ct.c_int(ae.get_prog_fd("action_entry"))
+            bpf_map_update_elem(actions_fd, ct.byref(action_entry_idx), ct.byref(action_entry_fd))
+            with TailCallLoader(selectors_fd, TC_E_SELECTORS_TAIL_CALL_LIST, self.loader) as stl,\
+                TailCallLoader(actions_fd, TC_E_ACTIONS_TAIL_CALL_LIST, self.loader) as atl:
+                for interface in self.interfaces:
+                    print("atttach tc egress to %s"%interface)
+                    ifindex = if_nametoindex(interface)
+                    egress_hook = init_libbpf_opt(bpf_tc_hook, ifindex = ifindex, attach_point = BPF_TC_ATTACH_POINT.BPF_TC_EGRESS)
+                    opts = init_libbpf_opt(bpf_tc_opts, prog_fd = se.get_prog_fd("selector_entry"))
+                    bpf_tc_attach(egress_hook, opts)
+
+    def detach(self):
+        self._destroy_hooks()
+        unpin_obj(TC_EGRESS_SELECTOR_ENTRY)
+        unpin_obj(TC_EGRESS_ACTION_ENTRY)
+        for obj in TC_E_SELECTORS_TAIL_CALL_LIST:
+            unpin_obj(obj)
+        for obj in TC_E_ACTIONS_TAIL_CALL_LIST:
+            unpin_obj(obj)
+    
+    def _create_hooks(self):
         for interface in self.interfaces:
-            print("del qdisc clsact of %s"%interface)
-            os.system(TCLoader.del_qdisc_cmd%interface)
+            ifindex = if_nametoindex(interface)
+            hook = init_libbpf_opt(bpf_tc_hook, ifindex = ifindex, attach_point = BPF_TC_ATTACH_POINT.BPF_TC_INGRESS | BPF_TC_ATTACH_POINT.BPF_TC_EGRESS)
+            bpf_tc_hook_create(hook)
 
-    def _assemble_attach_cmd(self, target, interface):
-        obj = target["obj"]
-        if "da_flag" in  target.keys() and target["da_flag"] == True:
-            da_flag = "da"
-        else:
-            da_flag = ""
-        direction = target["direction"]
-        assert(direction in ["ingress", "egress"])
-        return TCLoader.add_tc_filter_cmd%(interface, direction, da_flag, obj)
+    def _destroy_hooks(self):
+        for interface in self.interfaces:
+            try: 
+                print("move tc egress: %s"%interface)
+                ifindex = if_nametoindex(interface)
+                hook = init_libbpf_opt(bpf_tc_hook, ifindex = ifindex, attach_point = BPF_TC_ATTACH_POINT.BPF_TC_INGRESS | BPF_TC_ATTACH_POINT.BPF_TC_EGRESS)
+                bpf_tc_hook_destroy(hook)
+            except Exception:
+                pass
 
 #mptcp ebpf control fram prog loader 
+LOADER = BPFObjectLoader
 class ProgLoader:
     def __init__(self, arg_list): 
         parser = argparse.ArgumentParser(description="mptcp ebpf control frame prog loader")
@@ -112,8 +126,8 @@ class ProgLoader:
             print("without dev to attach or detach")
             exit()
 
-        self.tc_loader = TCLoader(interfaces)
-        self.xdp_loader = XdpLoader(interfaces, XDP_MAIN, XDP_TAIL_CALL_LIST, BPFObjectLoader)
+        self.tc_egress_loader = TCEgressProgLoader(interfaces, LOADER)
+        self.xdp_loader = XdpLoader(interfaces, LOADER)
         
     def run(self):
         if self.args.a:
@@ -141,11 +155,16 @@ class ProgLoader:
         '''
         #attach 
         #self.tc_loader.attach([tc_egress])
-        self.xdp_loader.attach()
+        try:
+            self.xdp_loader.attach()
+            self.tc_egress_loader.attach()
+        except Exception as e :
+            print(e)
+            self._detach()
        
     def _detach(self):
         self.xdp_loader.detach()
-        #self.tc_loader.detach()
+        self.tc_egress_loader.detach()
         #clear config 
         with open(IF_CONF_PATH, 'w') as f: 
           f.truncate(0)

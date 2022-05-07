@@ -492,10 +492,60 @@ def unpin_obj(bpf_obj_info):
     unpin_progs(bpf_obj_info["progs"])
     unpin_maps(bpf_obj_info["pin_maps"])
 
+#使用 clsact disc 
+#https://arthurchiao.art/blog/understanding-tc-da-mode-zh/#1-%E8%83%8C%E6%99%AF%E7%9F%A5%E8%AF%86linux-%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6tc%E5%AD%90%E7%B3%BB%E7%BB%9F
+class TCLoader:
+    #load tc submodule
+    add_qdisc_cmd = "sudo tc qdisc add dev %s clsact"
+    add_tc_filter_cmd = "sudo tc filter add dev %s %s bpf %s obj %s"
+    del_qdisc_cmd = "tc qdisc del dev %s clsact"
 
+    def __init__(self, interfaces): 
+        '''
+        @param: 
+            interfaces: interfaces to be attach or detach 
+        '''
 
+        self.interfaces = interfaces
+        assert(len(self.interfaces) > 0)
     
+    #可能不是很完善先这样
+    def attach(self, targets) : 
+        '''
+            {
+                "obj" : os.path.join(BPF_TC_OBJS_PATH, CONFIG.tc.tc_ingress + ".c.o"),
+                "da_flag" : False,
+                "direction" : "ingress"
+            }
+        '''
+        assert(isinstance(targets, list))
+        assert(len(targets) > 0)    
+        
+        for interface in self.interfaces: 
+            print("add clsact qdisc to %s"%interface)
+            os.system(TCLoader.add_qdisc_cmd%interface)
     
+            for target in targets:
+                cmd = self._assemble_attach_cmd(target, interface)
+                print(cmd)
+                os.system(cmd)
+        
+    def detach(self) : 
+        for interface in self.interfaces:
+            print("del qdisc clsact of %s"%interface)
+            os.system(TCLoader.del_qdisc_cmd%interface)
+
+    def _assemble_attach_cmd(self, target, interface):
+        obj = target["obj"]
+        if "da_flag" in  target.keys() and target["da_flag"] == True:
+            da_flag = "da"
+        else:
+            da_flag = ""
+        direction = target["direction"]
+        assert(direction in ["ingress", "egress"])
+        return TCLoader.add_tc_filter_cmd%(interface, direction, da_flag, obj)
+   
+   
     
 
 

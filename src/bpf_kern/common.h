@@ -1,5 +1,5 @@
-#ifndef MPTCP_EBPF_CONTROL_FRAME_COMMON_H
-#define MPTCP_EBPF_CONTROL_FRAME_COMMON_H
+#ifndef EMPTCP_COMMON_H
+#define EMPTCP_COMMON_H
 
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
@@ -9,11 +9,19 @@
 #include <linux/in.h>
 #include <linux/in6.h>
 
+#ifndef BCC_SEC
+
+#define NOBCC
+
+#endif 
+
+
 #ifdef NOBCC
 
 #include <linux/bpf.h> 
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
+#include <linux/pkt_cls.h>
 
 #ifndef __section
 #define __section(x) __attribute((section(x), used))
@@ -301,89 +309,152 @@ struct hdr_cursor {
 
 #define MAX_SUBFLOW_NUM 200000
 /*tcp 4 tuple key 96bytes, network byte order*/
-struct tcp_4_tuple {
-    __be32      local_addr;
-    __be32	peer_addr;
+struct tcp4tuple {
     __be16	local_port;
-    __be16	peer_port;
+    __be16	remote_port;
+    __be32      local_addr;
+    __be32	remote_addr;
 };
 
 //for test 
-struct tcp_ip_tuple {
+struct tcp2tuple {
     __be32      local_addr;
-    __be32      peer_addr;
+    __be32      remote_addr;
 };
 
-//typedef struct tcp_4_tuple flow_key_t; 
-typedef struct tcp_ip_tuple flow_key_t; 
+typedef __u64 action_chain_id_t;
 
-struct subflow_meta {
-    __u8 window_shift;
-};
+/* 
+ *bpf data struct define 
+ */
+
+/*
+#define MAX_XDP_ENTRY_NUM 32
+#define XDP_ENTRIES_PATH "/sys/fs/bpf/eMPTCP/xdp_entries"
+*/
+
+#define DEFAULT_POLICY 0
+
+//XDP
+
+#define XDP_ACTION_ENTRY DEFAULT_POLICY
+
+#define MAX_XDP_SELECTOR_NUM 32
+#define XDP_SELECTORS_PATH "/sys/fs/bpf/eMPTCP/xdp_selectors"
+
+#define XDP_SELECTOR_CHAIN_PATH "/sys/fs/bpf/eMPTCP/xdp_selector_chain"
 
 #define MAX_XDP_ACTION_NUM 32
-#define XDP_ACTIONS_PATH "/sys/fs/bpf/mptcp_ebpf_control_frame/xdp_actions"
-#define SUBFLOW_MAX_ACTION_NUM 4
-#define SUBFLOW_PARAM_BYTES 20
-#define SUBFLOW_ACTION_INGRESS_PATH "/sys/fs/bpf/mptcp_ebpf_control_frame/subflow_action_ingress"
-#define XDP_ACTIONS_FLAG_SIZE 20000
-#define XDP_ACTIONS_FLAG_PATH  "/sys/fs/bpf/mptcp_ebpf_control_frame/xdp_actions_flag"
+#define XDP_ACTIONS_PATH "/sys/fs/bpf/eMPTCP/xdp_actions"
 
+#define MAX_XDP_ACTION_CHAIN_NUM 200000
+#define XDP_ACTION_CHAINS_PATH "/sys/fs/bpf/eMPTCP/xdp_action_chains"
+
+#define MAX_POLICY_LEN 4
+
+//TC Egress
+#define TC_CB_MAX_LEN       5
+#define TC_EGRESS_ACTION_ENTRY DEFAULT_POLICY
+
+#define MAX_TC_EGRESS_SELECTOR_NUM 32
+#define TC_EGRESS_SELECTORS_PATH "/sys/fs/bpf/eMPTCP/tc_egress_selectors"
+
+#define TC_EGRESS_SELECTOR_CHAIN_PATH "/sys/fs/bpf/eMPTCP/tc_egress_selector_chain"
+
+#define MAX_TC_EGRESS_ACTION_NUM 32
+#define TC_EGRESS_ACTIONS_PATH "/sys/fs/bpf/eMPTCP/tc_egress_actions"
+
+#define MAX_TC_EGRESS_ACTION_CHAIN_NUM 200000
+#define TC_EGRESS_ACTION_CHAINS_PATH "/sys/fs/bpf/eMPTCP/tc_egress_action_chains"
+
+#define MAX_TC_EGRESS_EMPTCP_EVENTS_SIZE 128
+#define TC_EGRESS_EMPTCP_EVENTS_PATH "/sys/fs/bpf/eMPTCP/tc_egress_eMPTCP_events"
+
+union chain_t{
+    __u8 idx;
+    __u8 next_idx;
+
+};
+
+struct policy_t {
+    union chain_t chain;
+    __u8 rsv1;
+    __u8 rsv2;
+    __u8 rsv3;
+};
+typedef struct policy_t xdp_policy_t;
+typedef struct policy_t tc_policy_t;
+
+struct chain_meta_t {
+    __u8 idx;
+    __u8 len;
+    __u16 rsv;
+};
+typedef struct chain_meta_t tc_chain_meta_t;
+
+enum selector_op_type {
+    SELECTOR_AND = 0,
+    SELECTOR_OR = 1
+};
+
+struct selector_t {
+    union chain_t chain;
+    __u8 op;
+    __u16 rsv;
+};
+
+typedef struct selector_t xdp_selector_t;
+typedef struct selector_t tc_selector_t;
+
+#define SELECTOR_CHAIN_MAX_LEN MAX_POLICY_LEN
+struct selector_chain_t {
+    struct selector_t selectors[SELECTOR_CHAIN_MAX_LEN];
+}n;
+
+typedef struct selector_chain_t xdp_selector_chain_t;
+typedef struct selector_chain_t tc_selector_chain_t;
 
 enum param_type {
     IMME = 0,
     MEM = 1,
 };
 
-/*
-struct action {
-    __u8 param_type;
-    union {
-        __u8 action;
-        __u8 next_action;
-    } u1;
-    union {
-        __u16 imme;
-        struct {
-            __u8 offset;
-            __u8 version;  //可以用来判断是否失效
-        } mem;
-    } u2;
-};
-*/
-
 struct action_t {
-    __u8        param_type:2,
-                index:2,
-                version:4;
-    union {
-        __u8 action;
-        __u8 next_action;
-    } u1;
+    union chain_t chain;
+    __u8       param_type:2,
+               rsv:6;
     union {
         __u16 imme;
         struct {
             __u8 offset;
-            __u8 rsv;
+            __u8 len;
         } mem;
-    } u2;
-
+    } param;
 };
 
 typedef struct action_t xdp_action_t; 
+typedef struct action_t tc_action_t;
 
-struct action_flag_key_t {
-    flow_key_t flow;
-    struct action_t action;
-};
-typedef struct action_flag_key_t xdp_action_flag_key_t;
-
-typedef __u8 xdp_action_flag_t;
-
-struct subflow_xdp_actions_t {
-    xdp_action_t actions[SUBFLOW_MAX_ACTION_NUM];
+#define ACTION_CHAIN_MAX_LEN MAX_POLICY_LEN
+struct action_chain_t {
+    struct action_t actions[ACTION_CHAIN_MAX_LEN];
+    __u32 ref_cnt;
 };
 
-typedef struct subflow_xdp_actions_t xdp_subflow_action_t;
+typedef struct action_chain_t xdp_action_chain_t;
+typedef struct action_chain_t tc_action_chain_t;
+
+struct perf_event_header_t {
+    __u64  time_ns;
+    __u16  event;
+    __u16  len;
+};
+
+typedef struct perf_event_header_t eMPTCP_event_header_t;
+
+struct default_action_t {
+    action_chain_id_t id;
+    int enable;
+};
 
 #endif 

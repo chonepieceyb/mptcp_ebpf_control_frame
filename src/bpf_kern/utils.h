@@ -1,12 +1,11 @@
-#ifndef MPTCP_EBPF_CONTROL_FRAME_H
-#define MPTCP_EBPF_CONTROL_FRAME_H
+#ifndef EMPTCP_UTILS_H
+#define EMPTCP_UTILS_H
 
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
 #include "common.h"
-#include "actions_def.h"
 #include "error.h"
 
 #ifdef NOBCC
@@ -23,6 +22,12 @@
     (*((type*)(lhp))) = tmp ^ (*((type*)(lhp)));\
     (*((type*)(rhp))) = tmp ^ (*((type*)(rhp)));\
 }\
+
+#define CHECK_RES(res){                 \
+    if ((res) < 0) {                    \
+        goto fail;                      \
+    }                                   \
+}                                       \
 
 #define CHECK_BOUND(p,data_end){\
     if ((void*)((p) + 1) > (data_end)) {\
@@ -63,7 +68,153 @@
     else {\
         pos += opt->len;\
     }\
-}\
+}
+
+#define CHECK_SELECTOR_NOMATCH(op){     \
+   if ((op) == SELECTOR_OR) {           \
+        goto next_or;                      \
+   } else if((op)== SELECTOR_AND) {    \
+        goto not_target;                \
+   } else {                             \
+        goto fail;                      \
+   }                                    \
+}                                       
+
+#define CHECK_SELECTOR_MATCH(op){     \
+   if ((op) == SELECTOR_OR) {           \
+        goto exit;                      \
+   } else if((op)== SELECTOR_AND) {    \
+        goto next_and;                \
+   } else {                             \
+        goto fail;                      \
+   }                                    \
+} 
+
+#define TC_POLICY_PRE_SEC \
+    tc_policy_t POLICY; \
+    res = tc_get_and_pop_policy(ctx, &POLICY);\
+    CHECK_RES(res);\
+    __u8 NEXT_IDX = POLICY.chain.next_idx;
+
+#define XDP_POLICY_PRE_SEC \
+    xdp_policy_t POLICY; \
+    res = xdp_get_and_pop_policy(ctx, &POLICY);\
+    CHECK_RES(res);\
+    __u8 NEXT_IDX = POLICY.chain.next_idx;
+
+#define TC_SELECTOR_PRE_SEC \
+    TC_POLICY_PRE_SEC  \
+    tc_selector_t *SELECTOR = (tc_selector_t*)(&POLICY); \
+    __u8 SELECTOR_OP = SELECTOR->op;
+
+#define TC_SELECTOR_POST_SEC \
+    if (ACTION_CHAIN_ID == NULL) { \
+        CHECK_SELECTOR_NOMATCH(SELECTOR_OP); \
+    }                                   \
+    CHECK_SELECTOR_MATCH(SELECTOR_OP);   \
+next_or:\
+    if (NEXT_IDX == DEFAULT_POLICY) {   \
+        goto not_target;                \
+    }                                   \
+    goto next_selector;                     \
+next_and:                                        \
+    if (NEXT_IDX == DEFAULT_POLICY) {            \
+        goto exit;                               \
+    }                                            \
+    goto next_selector;                              \
+exit:                                             \
+    tc_clear_policy_chain(ctx);                    \
+    tc_set_action_chain_id(ctx, ACTION_CHAIN_ID);\
+    goto action_entry;   
+
+#define TC_ACTION_POST_SEC \
+next:                                   \
+    if (NEXT_IDX == DEFAULT_POLICY) {\
+        goto exit;                   \
+    }                                \
+    goto next_action;
+
+#define XDP_SELECTOR_PRE_SEC \
+    XDP_POLICY_PRE_SEC  \
+    xdp_selector_t *SELECTOR = (xdp_selector_t*)(&POLICY); \
+    __u8 SELECTOR_OP = SELECTOR->op;
+
+//res next_idx , fail, not_target
+#ifdef NOBCC
+
+#define XDP_SELECTOR_POST_SEC \
+    if (ACTION_CHAIN_ID == NULL) { \
+        CHECK_SELECTOR_NOMATCH(SELECTOR_OP); \
+    }                                   \
+    CHECK_SELECTOR_MATCH(SELECTOR_OP);   \
+next_or:\
+    if (NEXT_IDX == DEFAULT_POLICY) {   \
+        goto not_target;                \
+    }                                   \
+    goto next_selector;                     \
+next_and:                                        \
+    if (NEXT_IDX == DEFAULT_POLICY) {            \
+        goto exit;                               \
+    }                                            \
+    goto next_selector;                              \
+exit:                                             \
+    res = xdp_clear_policy_chain(ctx, NEXT_IDX);  \
+    CHECK_RES(res);\
+    res = xdp_set_action_chain_id(ctx, ACTION_CHAIN_ID);\
+    CHECK_RES(res);\
+    goto action_entry;                  \
+next_selector:                                  \
+    bpf_tail_call(ctx, &xdp_selectors, NEXT_IDX);  \
+    res = -TAIL_CALL_FAIL;                     \
+    goto fail;                                 \
+action_entry:                                  \
+    bpf_tail_call(ctx, &xdp_actions, XDP_ACTION_ENTRY);  \
+    res = -TAIL_CALL_FAIL;                     \
+    goto fail;                                 \
+
+
+#define XDP_ACTION_POST_SEC \
+next:                                   \
+    if (NEXT_IDX == DEFAULT_POLICY) {\
+        goto exit;                   \
+    }                                \
+    goto next_action;                 \
+next_action:                          \
+    bpf_tail_call(ctx,&xdp_actions, NEXT_IDX);     \
+    res = -TAIL_CALL_FAIL;                      \
+    goto fail;
+
+#else 
+
+#define XDP_SELECTOR_POST_SEC \
+    if (ACTION_CHAIN_ID == NULL) { \
+        CHECK_SELECTOR_NOMATCH(SELECTOR_OP); \
+    }                                   \
+    CHECK_SELECTOR_MATCH(SELECTOR_OP);   \
+next_or:\
+    if (NEXT_IDX == DEFAULT_POLICY) {   \
+        goto not_target;                \
+    }                                   \
+    goto next_selector;                     \
+next_and:                                        \
+    if (NEXT_IDX == DEFAULT_POLICY) {            \
+        goto exit;                               \
+    }                                            \
+    goto next_selector;                              \
+exit:                                             \
+    res = xdp_clear_policy_chain(ctx, NEXT_IDX);  \
+    CHECK_RES(res);\
+    res = xdp_set_action_chain_id(ctx, ACTION_CHAIN_ID);\
+    CHECK_RES(res);\
+    goto action_entry;
+
+#define XDP_ACTION_POST_SEC \
+next:                                   \
+    if (NEXT_IDX == DEFAULT_POLICY) {\
+        goto exit;                   \
+    }                                \
+    goto next_action;
+#endif 
 
 #ifdef NOBCC
 static __always_inline __sum16 csum16_add(__sum16 csum, __be16 addend)
@@ -88,7 +239,6 @@ static __always_inline void csum_replace2(__sum16 *sum, __be16 old, __be16 new)
 {
 	*sum = ~csum16_add(csum16_sub(~(*sum), old), new);
 }
-
 #endif 
 
 static __always_inline void move_cursor(struct hdr_cursor *nh, int bytes) {
@@ -222,7 +372,51 @@ not_exists:
     return -2; 
 }
 
-static __always_inline void check_mptcp_opts(
+static __always_inline int check_mptcp_opts(
+        struct hdr_cursor *nh, 
+        void *data_end, 
+        int tcp_opt_len, 
+        __u32 opt_flags) {
+/*
+ * param: 
+ *      nh : cursor 
+ *      data_end : packet data_end 
+ *      tcp_opt_len : tcp opt length parse from tcp header 
+ *      opt_flags: opts to be get, after call flags set to opt flags  found
+ *      opts: got mptcp opts
+ *      len: Max opts len, after this call set to opts num found
+ * return: 
+ *      0 : success , nh move to the address opt found 
+ *      -1 : fail
+ */
+    void *pos = nh->pos;
+    void *start = pos;
+    struct mptcp_option *opt;
+    #pragma unroll
+    for (int index = 0; index < 40; index++) {
+        int curr_idx = pos - start;
+        if (curr_idx >= tcp_opt_len) goto finish;
+        if (curr_idx == index) SCAN_MPTCP_OPT(pos, data_end);
+        continue;
+found:
+        opt = (struct mptcp_option*)pos;
+        CHECK_BOUND(opt, data_end);
+        if (opt_flags & (1 << opt->sub)) {
+            goto finish;
+        }
+        pos += opt->len;
+    }
+//not found mptcp opt 
+    return 1;
+finish:
+    nh->pos = pos;
+    return 0;
+
+out_of_bound:
+    return -CHECK_MPTCP_OPTS_FAIL;
+}
+
+static __always_inline void scan_mptcp_opts(
         const struct hdr_cursor *nh, void *data_end, int tcp_opt_len, __u32 *opt_flags) {
 
     void *start = nh->pos;
@@ -232,23 +426,6 @@ static __always_inline void check_mptcp_opts(
     for (int index = 0; index < 40; index++) {
         int curr_idx = pos - start;
         if (curr_idx >= tcp_opt_len) return;
-/*
-        if (curr_idx == index) {
-            opt = (pos);
-            CHECK_BOUND(opt, data_end);
-            if (opt->kind == 30){
-                *opt_flags |= (1 << opt->sub);
-                pos += opt->len;
-
-            }
-            if (opt->kind == 0 || opt->kind == 1) {
-                pos += 1;
-            }
-            else {
-                pos += opt->len;
-            }
-        }
-*/
         if (curr_idx == index) SCAN_MPTCP_OPT(pos, data_end);
         continue;
 found:
@@ -269,46 +446,51 @@ static __always_inline int cal_segment_len(const struct iphdr *iph, const struct
     return tot_len - 20 - ((tcph->doff) << 2);
 }
 
-//return 1 if need 
-static __always_inline int xdp_action_need_meta(int action) {
-    return  XDP_ACTION_META_BITMAP & (1 << action);
-}
-
 //return 0 if success
 //return negative if failed 
-static __always_inline int get_xdp_action(struct xdp_md *ctx, xdp_action_t *a) {
+static __always_inline int xdp_get_policy(struct xdp_md *ctx, xdp_policy_t *p) {
     void *data = (void *)(__u64)(ctx->data);
     void *data_meta = (void *)(__u64)(ctx->data_meta);
     
-    if(data_meta + sizeof(xdp_action_t) > data) {
-        return -FAILED_GET_XDP_ACTION;
+    if(data_meta + sizeof(xdp_policy_t) > data) {
+        return -XDP_GET_POLICY_FAIL;
     }
-    __builtin_memcpy(a, data_meta, sizeof(xdp_action_t));
+    __builtin_memcpy(p, data_meta, sizeof(xdp_policy_t));
     return 0;
 }
 
 //return 0 if success
 //negative if fail
-static __always_inline int pop_xdp_action(struct xdp_md *ctx) {
+static __always_inline int xdp_pop_policy(struct xdp_md *ctx) {
     long res; 
-    res = bpf_xdp_adjust_meta(ctx, sizeof(xdp_action_t));
+    res = bpf_xdp_adjust_meta(ctx, sizeof(xdp_policy_t));
     if (res < 0) {
-        return -POP_XDP_ACTION_FAILED;
+        return -XDP_POP_POLICY_FAIL;
     } else {
         return 0;
     }
 }
 
 //return 0 if success
-static __always_inline int get_and_pop_xdp_action(struct xdp_md *ctx, xdp_action_t *a) {
+static __always_inline int tc_get_and_pop_policy(struct __sk_buff *ctx, tc_policy_t *p) {
+    __builtin_memcpy(p, &(ctx->cb[1]), 4);
+#pragma unroll 
+    for (int i = 1; i < TC_CB_MAX_LEN-1; i++) {
+        ctx->cb[i] = ctx->cb[i+1];
+    }
+    return 0;
+}       
+
+//return 0 if success
+static __always_inline int xdp_get_and_pop_policy(struct xdp_md *ctx, xdp_policy_t *p) {
     int res;
-    res = get_xdp_action(ctx, a);
+    res = xdp_get_policy(ctx, p);
     if (res < 0) {
         goto fail;
     }
 
     //pop action
-    res = pop_xdp_action(ctx);
+    res = xdp_pop_policy(ctx);
     if (res < 0) {
         goto fail;
     }
@@ -319,13 +501,81 @@ fail:
     return res;
 }
 
-static __always_inline void get_ingress_flow_key(const struct iphdr *iph, const struct tcphdr *tcph, flow_key_t *flow_key) {
-    flow_key->local_addr = iph->daddr;
-    flow_key->peer_addr = iph->saddr;
+static __always_inline void tc_get_action_chain_id(struct __sk_buff *ctx, action_chain_id_t *chain) {
+    __builtin_memcpy((void*)(chain), &ctx->cb[0], 4);
+    __builtin_memcpy((void*)(chain) + 4, &ctx->cb[1], 4);
+    ctx->cb[0] = 0;
+    ctx->cb[1] = 0;
+}
+
+//return 0 if success
+//return negative if failed 
+static __always_inline int xdp_get_action_chain_id(struct xdp_md *ctx, action_chain_id_t *chain) {
+    int res;
+    void *data = (void *)(__u64)(ctx->data);
+    void *data_meta = (void *)(__u64)(ctx->data_meta);
     
-    //for testing 
-    //flow_key->local_port = tcph->dest;
-    //flow_key->peer_port = tcph->source;
+    if(data_meta + sizeof(action_chain_id_t) > data) {
+        goto fail;
+    }
+    __builtin_memcpy(chain, data_meta, sizeof(action_chain_id_t));
+    res = bpf_xdp_adjust_meta(ctx, sizeof(action_chain_id_t));
+    if (res < 0) {
+        goto fail;
+    }
+    return 0;
+fail:
+    return -XDP_GET_ACTION_CHAIN_ID_FAIL;
+}
+
+static __always_inline void tc_set_action_chain_id(struct __sk_buff *ctx, const action_chain_id_t *chain) {
+    // action_chain_id is 64bit 8bytes 
+    //low 4 bytes 
+    __builtin_memcpy(&(ctx->cb[0]), (void*)chain, 4);
+    //high 4 bytes 
+    __builtin_memcpy(&(ctx->cb[1]), (void*)chain + 4, 4);
+}
+
+static __always_inline int xdp_set_action_chain_id(struct xdp_md *ctx, const action_chain_id_t *chain) {
+    int res;
+    res = bpf_xdp_adjust_meta(ctx, -(int)sizeof(action_chain_id_t));
+    if (res < 0) {
+        goto fail;
+    }
+    void *data = (void *)(__u64)(ctx->data);
+    void *data_meta = (void *)(__u64)(ctx->data_meta);
+    
+    if(data_meta + sizeof(action_chain_id_t) > data) {
+        goto fail;
+    }
+    __builtin_memcpy(data_meta, chain, sizeof(action_chain_id_t));
+    return 0;
+fail:
+    return -XDP_SET_ACTION_CHAIN_ID_FAIL;
+}
+
+static __always_inline void get_tcp2tuple_in(const struct iphdr *iph, struct tcp2tuple *tcp2t) {
+    tcp2t->local_addr = iph->daddr;
+    tcp2t->remote_addr = iph->saddr;
+}
+
+static __always_inline void get_tcp2tuple_out(const struct iphdr *iph, struct tcp2tuple *tcp2t) {
+    tcp2t->local_addr = iph->saddr;
+    tcp2t->remote_addr = iph->daddr;
+}
+
+static __always_inline void get_tcp4tuple_in(const struct iphdr *iph,  const struct tcphdr *tcph, struct tcp4tuple *tcp4t) {
+    tcp4t->local_addr = iph->daddr;
+    tcp4t->remote_addr = iph->saddr;
+    tcp4t->local_port = tcph->dest;
+    tcp4t->remote_port = tcph->source;
+}
+
+static __always_inline void get_tcp4tuple_out(const struct iphdr *iph,  const struct tcphdr *tcph, struct tcp4tuple *tcp4t) {
+    tcp4t->local_addr = iph->saddr;
+    tcp4t->remote_addr = iph->daddr;
+    tcp4t->local_port = tcph->source;
+    tcp4t->remote_port = tcph->dest;
 }
 
 #define NORMAL_H_LEN (sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct tcphdr))
@@ -445,11 +695,11 @@ static __always_inline void update_tcphlen_csum(
 //对于数据包来说，无法直接使用 xdp_adjust_tail helper 
 //supposed that we don't contains IP opts 
 //return 0 if success
-//return -1 failed but packet had not been modified 
-//return -2 failed but packet had been modified 
-static __always_inline int xdp_grow_tcp_header(struct xdp_md *ctx, struct hdr_cursor *nh,  __u16 tcp_opt_len, int bytes) {
+//return negative if fail
+static __always_inline int xdp_grow_tcp_header(struct xdp_md *ctx, struct hdr_cursor *nh,  __u16 tcp_opt_len, int bytes, int *modified) {
     if (bytes <= 0) {
-        goto fail_no_modified;
+        *modified = 0;
+        goto fail;
     }
     void * data = (void *)(long)ctx->data;
     void * data_end =  (void *)(long)ctx->data_end; 
@@ -461,33 +711,32 @@ static __always_inline int xdp_grow_tcp_header(struct xdp_md *ctx, struct hdr_cu
     //1. store header to buf
     res = store_header(&buf, nh, data_end, tcp_opt_len);
     if (res < 0) {
-        goto fail_no_modified;
+        *modified = 0;
+        goto fail;
     }
 
     //2. grow header
     res = bpf_xdp_adjust_head(ctx, -bytes);
     if (res < 0) {
-        goto fail_modified;
-        //adjust failed 
-        //goto fail_modified;
+        *modified = 1;
+        goto fail;
     }
 
     //3 reset data and data_end
     data =  (void *)(long)ctx->data; 
     data_end =  (void *)(long)ctx->data_end; 
 
-    
     //4. recover header 
     nh->pos = data;
     res = recover_header(&buf, nh, data_end, tcp_opt_len);
     if (res < 0) {
-        goto fail_modified;
+        *modified = 1;
+        goto fail;
     }
     return 0;
-fail_no_modified:
+
+fail:
     return -1;
-fail_modified:
-    return -2;
 }
 
 static __always_inline void add_tcpopt_csum(__sum16 *csum, const void *src, __u16 size) {
@@ -525,9 +774,9 @@ static __always_inline int add_tcp_opts(struct hdr_cursor *nh, void *data_end, c
 
     nh->pos = pkt_dst;
     return 0;
-fail:
-    return -1;
+
 out_of_bound:
+fail:
     return -1;
 }
 
@@ -539,18 +788,18 @@ static __always_inline void set_tcp_nop2(__u16 *dst) {
     *dst = 0x0101;
 }
 
-#endif 
-
-static __always_inline int xdp_rm_tcp_header(struct hdr_cursor *nh, void *data_end, struct tcphdr *tcph, __u16 size) {
+static __always_inline int xdp_rm_tcp_header(struct hdr_cursor *nh, void *data_end, struct tcphdr *tcph, __u16 size, int *modified) {
     //set option to nop and update checksum 
     if ((size & 0x1) != 0) {
         //size % 2 != 0
+        *modified = 0;
         goto fail;
     }
 
     __u16 *pkt = nh->pos;
     __u16 s2 = size >> 1;  
 
+    *modified = 1;
 #pragma unroll 20
     for (int i = 0; i < 20; i++) {
         if (i >= s2) break;
@@ -564,8 +813,132 @@ static __always_inline int xdp_rm_tcp_header(struct hdr_cursor *nh, void *data_e
 
     nh->pos = pkt;
     return 0;
+
+out_of_bound:
 fail:
-    return -1;  //no modified
-out_of_bound: 
-    return -2;  // modified 
+    return -1;  
 }
+
+static __always_inline void tc_set_policy_chain(struct __sk_buff *ctx, tc_policy_t policies[MAX_POLICY_LEN], __u8 *first_policy) {     
+    *first_policy = policies[0].chain.idx;
+    __u8 policy_num = 0;
+    #pragma unroll
+    for (int i = 0;  i < MAX_POLICY_LEN - 1; i++) {
+        int policy = policies[i].chain.idx;
+        if (policy == DEFAULT_POLICY) {
+            goto set;
+        }
+        policies[i].chain.next_idx = policies[i+1].chain.idx;
+        __builtin_memcpy(&ctx->cb[i+1], &(policies[i]), sizeof(tc_policy_t));
+        policy_num++;    
+    }
+    int last_policy = policies[MAX_POLICY_LEN - 1].chain.idx;
+    if (last_policy != DEFAULT_POLICY) {
+        policies[MAX_POLICY_LEN - 1].chain.next_idx = DEFAULT_POLICY;
+        __builtin_memcpy(&ctx->cb[MAX_POLICY_LEN], &(policies[MAX_POLICY_LEN - 1]), sizeof(tc_policy_t));
+        policy_num++; 
+    }
+
+set:
+    if (policy_num == 0) {
+        return;
+    }
+
+    tc_chain_meta_t meta;
+    __builtin_memset(&meta, 0, sizeof(tc_chain_meta_t));
+    meta.idx = 1;    //ctx->cb[1]
+    meta.len = policy_num;
+    __builtin_memcpy(&ctx->cb[0], &meta, sizeof(tc_chain_meta_t));
+    return;
+}
+
+// return 0 if success else return -1 
+static __always_inline int xdp_set_policy_chain(struct xdp_md *ctx, xdp_policy_t policies[MAX_POLICY_LEN], __u8 *first_policy) {
+    //遍历几个字节的事情，我觉得开销应该不会特别大
+    int res;
+    __u8 policy_num = 0;
+
+    #pragma unroll
+    for (int i = 0; i < MAX_POLICY_LEN; i++) {
+        int policy = policies[i].chain.idx;
+        if (policy == DEFAULT_POLICY) break;
+        policy_num++;    
+    }
+    
+    if (policy_num == 0) {
+        *first_policy = DEFAULT_POLICY;
+        return 0;
+    }
+       
+    *first_policy = policies[0].chain.idx;
+
+    #pragma unroll 
+    for (int i = 0; i < MAX_POLICY_LEN - 1; i++) {
+        policies[i].chain.next_idx = policies[i+1].chain.idx;
+    }
+    policies[MAX_POLICY_LEN - 1].chain.next_idx = DEFAULT_POLICY;
+    
+    //adjust xdp_meta and set action chain to xdp_meta 
+    res = bpf_xdp_adjust_meta(ctx, -(policy_num * sizeof(xdp_policy_t)));
+    if (res < 0) {
+        return -XDP_ADJUST_META_FAIL;
+    }
+    
+    void *data = (void *)(__u64)(ctx->data);
+    void *pos = (void *)(__u64)(ctx->data_meta);
+    void *policy = policies;
+
+    #pragma unroll MAX_POLICY_LEN
+    for (int i = 0; i < MAX_POLICY_LEN; i++) {
+        if (i >= policy_num) break;
+        if (pos + sizeof(xdp_policy_t) > data) {
+            return -XDP_ADJUST_META_FAIL;
+        }
+        __builtin_memcpy(pos, policy, sizeof(xdp_policy_t));
+        pos += sizeof(xdp_policy_t);
+        policy += sizeof(xdp_policy_t);
+    }
+    return 0;
+}
+
+static __always_inline void tc_clear_policy_chain(struct __sk_buff *ctx) {
+    __builtin_memset(ctx->cb, 0 , 4 * TC_CB_MAX_LEN);
+    //ctx->cb[0] = 0;
+    //ctx->cb[1] = 0;
+    //ctx->cb[2] = 0;
+    //ctx->cb[3] = 0;
+    //ctx->cb[4] = 0;
+}
+
+//return 0 success
+//return -1 failed
+static __always_inline int xdp_clear_policy_chain(struct xdp_md *ctx, __u8 next_idx) {
+    if (next_idx == DEFAULT_POLICY) return 0;
+     
+    int res;
+    __u8 count = 0;
+
+    void *data = (void *)(__u64)(ctx->data);
+    xdp_policy_t *p = (void *)(__u64)(ctx->data_meta);
+    
+    #pragma unroll 
+    for (int i = 0; i < MAX_POLICY_LEN; i++) {
+        if ((void*)(p + 1) > data) {
+            goto fail;
+        }
+        count++;
+        next_idx = p->chain.next_idx;
+        if (next_idx == DEFAULT_POLICY) {
+            break;
+        }
+    }
+    res = bpf_xdp_adjust_meta(ctx, count * sizeof(xdp_policy_t));
+    if (res < 0) goto fail;
+    return 0;
+fail:
+    res = -XDP_CLEAR_SELECTOR_CHAIN_FAIL;
+    return -1;
+}
+
+
+#endif

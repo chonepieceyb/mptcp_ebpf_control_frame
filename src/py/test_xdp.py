@@ -1,12 +1,12 @@
 #-*- coding:utf-8 -*-
 
-from scapy.all import Ether, IP, raw, TCP, Raw, hexdump
+from scapy.all import Ether, IP, raw, TCP, hexdump
 from bcc import BPF, libbcc
 import unittest
 import ctypes as ct 
 from bpf_map_def import *
 from bpf_loader import *
-from action_tool import *
+from policy_chain import *
 
 def raw_to_pkt(raw_pkt) : 
   pkt_byte = eval(str(raw_pkt))
@@ -53,19 +53,22 @@ class XDPTestCase(unittest.TestCase):
             print("++++expected output+++")
             expected_packet.show2()
             hexdump(expected_packet)
-            raise e 
+            raise(e)
     
     def setup(self, fd):
         self.fd = fd
+
+selector_chain = None 
 
 def test_set_recv_win_ingress(xdp_tester):
     print("+++++test set recv win begin ++++++++")
     pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='S', window = 100)
     epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='S', window = 1600)
     
-    flow_actions = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.131")
-    flow_actions.add("set_recv_win", arg_list = ["--recv_win", "1600"])
-    flow_actions.submit()
+    ac = XDPActionChain()
+    ac.add("set_recv_win", recv_win = 1600)
+    policy = XDPPolicyChain(selector_chain, ac)
+    policy.set(1, local_addr = "172.16.12.128", remote_addr = "172.16.12.131")
     xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
     print("+++++test set recv win finish! ++++++++")
 
@@ -73,65 +76,103 @@ def test_set_flow_prio_ingress(xdp_tester):
     print("+++++test flow prio ingress 1 ++++++++")
     pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='SA', window = 100,  options=[(30,b'\x51'),(1,b'')])
     epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='SA', window = 100,  options=[(30,b'\x51'),(1,b'')])
-
-    flow_actions = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.131")
-    flow_actions.add("set_flow_prio", backup = 1, addr_id = None)
-    flow_actions.submit()
+    
+    ac = XDPActionChain()
+    ac.add("set_flow_prio", backup = 1, addr_id = None)
+    policy = XDPPolicyChain(selector_chain, ac)
+    policy.set(1, local_addr = "172.16.12.128", remote_addr = "172.16.12.131")
     xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
     print("+++++finish test flow prio ingress 1 ++++++++")
 
     print("+++++test flow prio ingress 2 ++++++++")
     pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 100,  options=[(30,b'\x51'),(1,b'')])
     epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 100,  options=[(30,b'\x51'),(1,b''), (30,b'\x50\x02')])
-
-    flow_actions = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.131")
-    flow_actions.add("set_flow_prio", backup = 0, addr_id = 2)
-    flow_actions.submit()
+    
+    ac = XDPActionChain()
+    ac.add("set_flow_prio", backup = 0, addr_id = 2)
+    policy = XDPPolicyChain(selector_chain, ac)
+    policy.set(1, local_addr = "172.16.12.128", remote_addr = "172.16.12.131")
     xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
+
     print("+++++finish test flow prio ingress 2 ++++++++")
 
 def test_rm_addr(xdp_tester):
     print("+++++test_rm_addr++++++++")
     pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', options=[(30,b'\x34\x05\xdf\x03\x44\x95'),(30, b'\x20\x01\xe5\x7f\x0c\x4f')])
     epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', options=[(1,b''),(1,b''),(1,b''),(1,b''),(1,b''),(1,b''),(1,b''),(1,b''),(30, b'\x20\x01\xe5\x7f\x0c\x4f')])
-    
-    flow_actions = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.131")
-    flow_actions.add("rm_add_addr")
-    flow_actions.submit()
+    ac = XDPActionChain()
+    ac.add("rm_add_addr")
+    policy = XDPPolicyChain(selector_chain, ac)
+    policy.set(1, local_addr = "172.16.12.128", remote_addr = "172.16.12.131")
     xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
+
     print("+++++test_rm_addr finish! ++++++++")
 
 def test_action_chain(xdp_tester):
     print("+++++test action chain 1(set win + set prio) ++++++++")
     pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 100,  options=[(30,b'\x51'),(1,b'')])
     epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 1600,  options=[(30,b'\x51'),(1,b''), (30,b'\x51'),(1,b'')])
-
-    flow_actions = FlowIngressAction(local_addr = "172.16.12.128", peer_addr = "172.16.12.131")
-    flow_actions.add("set_recv_win", arg_list = ["--recv_win", "1600"])
-    flow_actions.add("set_flow_prio", backup = 1, addr_id = None)
-    flow_actions.submit()
+    ac = XDPActionChain()
+    ac.add("set_recv_win", arg_list = ["--recv_win", "1600"]).add("set_flow_prio", backup = 1, addr_id = None)
+    policy = XDPPolicyChain(selector_chain, ac)
+    policy.set(1, local_addr = "172.16.12.128", remote_addr = "172.16.12.131")
     xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
+      
     print("+++++finish test action chain 1 ++++++++")
 
+def test_selector_chain(xdp_tester):
+    print("+++++test_selector_chain++++++++")
+    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(sport = 1001, flags ='A', window = 100,  options=[(30,b'\x51'),(1,b'')])
+    epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(sport = 1001, flags ='A', window = 100,  options=[(30,b'\x51'),(1,b''), (30,b'\x51'),(1,b'')])
+
+    pkt2 = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(sport = 1000, dport = 1000, flags ='A', window = 100)
+    epkt2 = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(sport = 1000, dport = 1000, flags ='A', window = 1600)
+    
+    ac = XDPActionChain()
+    ac.add("set_flow_prio", backup = 1, addr_id = None)
+    policy = XDPPolicyChain(selector_chain, ac)
+    policy.set(1, local_addr = "172.16.12.128", remote_addr = "172.16.12.131")
+
+    ac2 = XDPActionChain()
+    ac2.add("set_recv_win", arg_list = ["--recv_win", "1600"])
+    policy2 = XDPPolicyChain(selector_chain, ac2)
+    policy2.set(0, local_addr = "172.16.12.128", remote_addr = "172.16.12.131", local_port = 1000, remote_port = 1000)
+
+    xdp_tester.xdp_test_run(pkt, epkt, BPF.XDP_PASS)
+    xdp_tester.xdp_test_run(pkt2, epkt2, BPF.XDP_PASS)
+    print("+++++finish test_selector_chain+++++++")
+    
 if __name__ == '__main__': 
-    xdp_main = None 
-    tailcall_loader = None 
     loader = BPFObjectLoader
-    with load(XDP_MAIN, loader, unpin_only_fail=False) as xdp_main:
-      prog_array_fd = xdp_main.get_map_fd(XDP_ACTIONS)
-      with TailCallLoader(prog_array_fd, XDP_TAIL_CALL_LIST, loader, clear_only_fail=False) as tl:
-        try:
-          FlowIngressAction.config()
+    clear_only_fail = False
+    with load(XDP_SELECTOR_ENTRY, loader, unpin_only_fail=clear_only_fail) as xdp_selector_entry, \
+      load(XDP_ACTION_ENTRY, loader, unpin_only_fail=clear_only_fail) as xdp_action_entry: 
+      xdp_selectors_fd = xdp_selector_entry.get_map_fd(XDP_SELECTORS)
+      xdp_actions_fd = xdp_action_entry.get_map_fd(XDP_ACTIONS)
+      action_entry_idx = ct.c_int(ACTION_ENTRY_IDX)
+      action_entry_fd = ct.c_int(xdp_action_entry.get_prog_fd("action_entry"))
+      bpf_map_update_elem( xdp_actions_fd, ct.byref(action_entry_idx), ct.byref(action_entry_fd))
+      with TailCallLoader(xdp_selectors_fd, XDP_SELECTORS_TAIL_CALL_LIST, loader, clear_only_fail=clear_only_fail) as stl,\
+          TailCallLoader(xdp_actions_fd, XDP_ACTIONS_TAIL_CALL_LIST, loader, clear_only_fail=clear_only_fail) as atl:
+          
+          XDPSelectorChain.config()
+          XDPPolicyChain.config()
+          selector_chain = XDPSelectorChain()
+          if not selector_chain.init: 
+              print("create new subflo")
+              selector_chain.add("tcp4", selector_op_type_t.SELECTOR_OR).add("tcp2", selector_op_type_t.SELECTOR_AND)
+              selector_chain.submit()
           tester = XDPTestCase()
-          tester.setup(xdp_main.get_prog_fd("xdp_main"))
+          tester.setup(xdp_selector_entry.get_prog_fd("selector_entry"))
 
           print("start test")
-          
-          test_set_recv_win_ingress(tester)
-          test_set_flow_prio_ingress(tester)
-          test_action_chain(tester)
-          test_rm_addr(tester)
-          print("end test")    
-        except Exception as e:
-          print(e)
+          try: 
+            test_set_recv_win_ingress(tester)
+            test_set_flow_prio_ingress(tester)
+            test_action_chain(tester)
+            test_rm_addr(tester)
+            test_selector_chain(tester)
+            print("end test")    
+          except Exception as e:
+            print(e) 
 

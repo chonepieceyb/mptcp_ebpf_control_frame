@@ -6,10 +6,8 @@ if_config_path: if_attach_list.config
 #一个可能的方案是，通过 编译 -D 选项传进去，然后用 python脚本在顶层进行编译
 #暂时先保存两份
 
-progect_pin_prefix: mptcp_ebpf_control_frame
+progect_pin_prefix: eMPTCP
 
 #define
-max_subflow_num: 200000
-max_xdp_action_num: 32
-subflow_max_action_num: 4
-subflow_param_bytes: 20
+
+max_policy_len: 4

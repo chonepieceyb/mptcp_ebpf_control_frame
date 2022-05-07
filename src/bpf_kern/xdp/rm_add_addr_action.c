@@ -11,29 +11,20 @@ struct {
 } xdp_actions SEC(".maps");
 
 #else
+
 BPF_TABLE_PINNED("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM, XDP_ACTIONS_PATH);
-//BPF_TABLE("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM);
+
 #endif
 
 #ifdef NOBCC
 SEC("xdp")
 #endif 
-int rm_add_addr_ingress(struct xdp_md *ctx) {
+int rm_add_addr_action(struct xdp_md *ctx) {
     int res;
-/*
- **************action opt begin*************
- */
-    //get action 
-    xdp_action_t a;   //4bytes 
-    res = get_and_pop_xdp_action(ctx, &a);
-    if (res < 0) {
-        goto fail_no_modify;
-    }
-    __u8 next_action = a.u1.next_action;
-/*
- * ************action opt end***************
- */
-
+    int modified = 0;
+    
+    XDP_POLICY_PRE_SEC
+    
     //rm add addr without param 
     
     void *data = (void *)(__u64)(ctx->data);
@@ -48,51 +39,48 @@ int rm_add_addr_ingress(struct xdp_md *ctx) {
     tcphl = res = is_tcp_packet(&nh, data_end, &eth, &iph, &tcph);
     
     if (res < 0) {
-        res = -INTERNAL_IMPOSSIBLE;
-        goto fail_no_modify;
+        res = -NOT_TCP;
+        goto fail;
     }
     
     //only work on tcp ack 
     if (!(tcph->ack && !tcph->syn)) {
-        goto next_action;
+        goto next;
     }
     
     //get addr option
     res = check_mptcp_opt(&nh, data_end, tcphl-20, MPTCP_SUB_ADD_ADDR);
     if (res < 0) {
-        goto next_action;  //not our target 
+        goto next;
     }
     struct mptcp_option *mptcp_opt = nh.pos;
     CHECK_BOUND(mptcp_opt, data_end);
 
-    res =  xdp_rm_tcp_header(&nh, data_end, tcph, mptcp_opt->len);
+    res =  xdp_rm_tcp_header(&nh, data_end, tcph, mptcp_opt->len, &modified);
 
-    if (res == -2) goto fail_modify;
-
-next_action:
-    if (next_action == DEFAULT_ACTION) {
-        goto finish;
+    if (res < 0) {
+        goto fail;
     }
+    
+    XDP_ACTION_POST_SEC
 
-    //call next action
-#ifdef NOBCC
-    bpf_tail_call(ctx, &xdp_actions, next_action);
-#else
-    xdp_actions.call(ctx, next_action);
-#endif
-    res = XDP_TAIL_CALL_FAIL;
-
-fail_modify:
-    return XDP_DROP;
-
-fail_no_modify: 
-    return XDP_PASS;
-
-finish:
-    return XDP_PASS;
+#ifndef NOBCC
+next_action:                          
+    xdp_actions.call(ctx, NEXT_IDX);
+    res = -TAIL_CALL_FAIL;                      
+    goto fail;
+#endif 
 
 out_of_bound:
+fail:
+    if (modified) {
+        return XDP_DROP;
+    } else {
+        return XDP_PASS;
+    }
+exit:
     return XDP_PASS;
+
 }
 #ifdef NOBCC
 char _license[] SEC("license") = "GPL";

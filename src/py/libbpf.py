@@ -1,11 +1,12 @@
 #-*- coding:utf-8 -*-
 
 import ctypes as ct
-from termios import VLNEXT 
 from error import LinuxError
 from config import CONFIG
 from enum import IntFlag, IntEnum, unique
 
+def setzero(c_type_object):
+    ct.memset(ct.byref(c_type_object), ct.c_int(0), ct.sizeof(c_type_object))
 #enums 
 @unique
 class BPF_PROG_TYPE(IntEnum):
@@ -150,6 +151,9 @@ lib.bpf_map_delete_elem.argtypes = [ct.c_int, ct.c_void_p]
 lib.bpf_map_lookup_elem.restype = ct.c_int 
 lib.bpf_map_lookup_elem.argtypes = [ct.c_int, ct.c_void_p, ct.c_void_p]
 
+lib.bpf_map_lookup_and_delete_elem.restype = ct.c_int 
+lib.bpf_map_lookup_and_delete_elem.argtypes = [ct.c_int, ct.c_void_p, ct.c_void_p] 
+
 lib.bpf_create_map.restype = ct.c_int 
 lib.bpf_create_map.argtypes = [ct.c_int, ct.c_int, ct.c_int, ct.c_int, ct.c_uint32]
 
@@ -161,7 +165,6 @@ lib.libbpf_strerror.argtypes = [ct.c_int, ct.c_char_p, ct.c_size_t]
 
 perf_buffer_sample_fn = ct.CFUNCTYPE(None, ct.c_void_p, ct.c_int, ct.c_void_p, ct.c_uint32) # (void*  ctx, int cpu, void* data, __u32 size)
 perf_buffer_lost_fn = ct.CFUNCTYPE(None, ct.c_void_p, ct.c_int, ct.c_uint64) # void* ctx , int cpu, __u64 cnt
-
 
 lib.perf_buffer__new.restype = ct.c_void_p
 lib.perf_buffer__new.argtypes = [ct.c_int, ct.c_size_t, perf_buffer_sample_fn, perf_buffer_lost_fn, ct.c_void_p, ct.c_void_p]
@@ -214,6 +217,53 @@ lib.bpf_xdp_attach.argtypes = [ct.c_int, ct.c_int, ct.c_uint32, ct.c_void_p]
 lib.bpf_xdp_detach.restype = ct.c_int
 lib.bpf_xdp_detach.argtypes = [ct.c_int, ct.c_uint32, ct.c_void_p]
 
+@unique
+class BPF_TC_FLAGS(IntFlag):
+    BPF_TC_F_REPLACE = 1 << 0
+
+@unique 
+class BPF_TC_ATTACH_POINT(IntFlag):
+    BPF_TC_INGRESS = 1 << 0
+    BPF_TC_EGRESS = 1 << 1
+    BPF_TC_CUSTOM = 1 << 2
+
+class bpf_tc_hook(ct.Structure):
+     _fields_  = [\
+        ("sz", ct.c_size_t),
+        ("ifindex", ct.c_int),
+        ("attach_point", ct.c_int),
+        ("parent", ct.c_uint32)
+    ]
+
+def init_libbpf_opt(OPT, **kw):
+    opt = OPT()
+    opt.sz = ct.sizeof(OPT)
+    for a, v in kw.items():
+        setattr(opt, a, v)
+    return opt
+
+class bpf_tc_opts(ct.Structure):
+     _fields_  = [\
+        ("sz", ct.c_size_t),
+        ("prog_fd", ct.c_int),
+        ("flags", ct.c_uint32),
+        ("prog_id", ct.c_uint32),
+        ("handle", ct.c_uint32),
+        ("priority", ct.c_uint32)
+    ]
+
+lib.bpf_tc_hook_create.restype = ct.c_int 
+lib.bpf_tc_hook_create.argtypes = [ct.c_void_p]
+
+lib.bpf_tc_hook_destroy.restype = ct.c_int 
+lib.bpf_tc_hook_destroy.argtypes = [ct.c_void_p]
+
+lib.bpf_tc_attach.restype = ct.c_int 
+lib.bpf_tc_attach.argtypes = [ct.c_void_p, ct.c_void_p]
+
+lib.bpf_tc_detach.restype = ct.c_int 
+lib.bpf_tc_detach.argtypes = [ct.c_void_p, ct.c_void_p]
+
 #errors 
 
 class LibbpfError(Exception):
@@ -228,6 +278,10 @@ class LibbpfError(Exception):
 def check_res(hint, res): 
     if res < 0: 
         raise LinuxError(hint, ct.get_errno())
+
+def check_errno(hint, errno):
+    if errno < 0: 
+        raise LinuxError(hint, errno)
 
 def check_libpfres(hint, res): 
     if res < 0: 
@@ -251,7 +305,7 @@ def bpf_obj_get(pathname) :
         fd of bpf object if success or raise LinuxError
     '''
     fd = lib.bpf_obj_get(pathname.encode(encoding = "utf-8"))
-    check_res("bpf_obj_get", fd)
+    check_res("bpf_obj_get: %s"%pathname, fd)
     return fd 
 
 def bpf_map_update_elem(fd, key, value, flags = BPF_MAP_UPDATE_ELEM_FLAG.BPF_ANY):
@@ -283,6 +337,16 @@ def bpf_map_lookup_elem(fd, key , value):
     '''
     res = lib.bpf_map_lookup_elem(ct.c_int(fd), key, value)
     check_res("bpf_map_delete_elem", res)
+
+def bpf_map_lookup_and_delete_elem(fd, key, value):
+    '''
+    @param
+        fd : bpf map fd  (int)
+        key : ctypes pointer key (const void*)
+        value : ctypes pointer value (void *)
+    '''
+    res = lib.bpf_map_lookup_and_delete_elem(ct.c_int(fd), key, value)
+    check_res("bpf_map_lookup_and_delete_elem", res)
 
 def bpf_create_map(map_type, key_size, value_size, max_entries, map_flags = 0):
     '''
@@ -331,7 +395,7 @@ def bpf_object__pin(bpf_obj, path):
         path: pin root path 
     '''
     res = lib.bpf_object__pin(bpf_obj, path.encode(encoding = "utf-8"))
-    check_libpfres("bpf_object__pin failed", res)
+    check_libpfres("bpf_object__pin : %s failed"%path, res)
 
 def bpf_object__find_program_by_name(bpf_obj, name):
     '''
@@ -343,7 +407,7 @@ def bpf_object__find_program_by_name(bpf_obj, name):
     '''
     prog = lib.bpf_object__find_program_by_name(bpf_obj, name.encode(encoding = "utf-8"))
     res = lib.libbpf_get_error(prog)
-    check_libpfres("bpf_object__find_program_by_name failed", res)
+    check_libpfres("bpf_object__find_program_by_name : %s failed"%name, res)
     return prog
 
 def bpf_program__fd(bpf_prog):
@@ -367,7 +431,7 @@ def bpf_object__find_map_by_name(bpf_obj, name):
     '''
     m = lib.bpf_object__find_map_by_name(bpf_obj, name.encode(encoding = "utf-8"))
     res = lib.libbpf_get_error(m)
-    check_libpfres("bpf_object__find_map_by_name failed", res)
+    check_libpfres("bpf_object__find_map_by_name :%s failed"%name, res)
     return m
 
 def bpf_map__fd(bpf_map):
@@ -389,8 +453,7 @@ def bpf_map__pin(bpf_map, path):
     '''
     
     res = lib.bpf_map__pin(bpf_map, path.encode(encoding = "utf-8"))
-    print(res)
-    check_libpfres("bpf_map__pin failed", res)
+    check_libpfres("bpf_map__pin : %s failed"%path, res)
 
 def bpf_program__pin(bpf_prog, path):
     '''
@@ -399,7 +462,7 @@ def bpf_program__pin(bpf_prog, path):
         path: pin path
     '''
     res = lib.bpf_program__pin(bpf_prog, path.encode(encoding = "utf-8"))
-    check_libpfres("bpf_program__pin failed", res)
+    check_libpfres("bpf_program__pin : %s failed"%path, res)
 
 def bpf_map__reuse_fd(bpf_map, fd):
     '''
@@ -439,6 +502,32 @@ def bpf_xdp_attach(ifindex, prog_fd, flags, opts):
     '''
     res = lib.bpf_xdp_attach(ct.c_int(ifindex), ct.c_int(prog_fd), ct.c_uint32(flags), opts)
     check_libpfres("bpf_xdp_attach failed", res)
+
+def bpf_tc_hook_create(hook):
+    '''
+    @param:
+        hook : tc hook 
+    '''
+    res = lib.bpf_tc_hook_create(ct.byref(hook))
+    check_libpfres("bpf_tc_hook_create failed", res)
+
+def bpf_tc_hook_destroy(hook):
+    res = lib.bpf_tc_hook_destroy(ct.byref(hook))
+    check_libpfres("bpf_tc_hook_destory failed", res)
+
+def bpf_tc_attach(hook, opts):
+    '''
+    @param: 
+        hook: bpf tc hook 
+        opts: tc opts
+    '''
+
+    res = lib.bpf_tc_attach(ct.byref(hook), ct.byref(opts))
+    check_libpfres("bpf_tc_attach failed", res)
+
+def bpf_tc_detach(hook, opts):
+    res = lib.bpf_tc_detach(ct.byref(hook), ct.byref(opts))
+    check_libpfres("bpf_tc_detach failed", res)
 
 #perf buffer 
 class PerfBuffer:
@@ -500,10 +589,3 @@ if __name__ == '__main__' :
         print(e)
 
     '''
-    try:
-        tail_path = os.path.join(BPF_TC_BTF_OBJS_PATH, "tc_egress_tailcall.c.o")
-        tail_obj = bpf_object__open(tail_path)
-        bpf_object__load(tail_obj)
-
-    except LibbpfError as e : 
-        print(e)

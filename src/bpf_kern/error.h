@@ -1,14 +1,23 @@
-#ifndef MPTCP_EBPF_CONTROL_FRAME_ERROR_H
-#define MPTCP_EBPF_CONTROL_FRAME_ERROR_H
+#ifndef EMPTCP_ERROR_H
+#define EMPTCP_ERROR_H
 
-#define FAILED_ADJUST_XDP_META          1001
-#define FAILED_GET_XDP_ACTION           1002
+#define XDP_ADJUST_META_FAIL            1001
+#define XDP_GET_POLICY_FAIL             1002
 #define INTERNAL_IMPOSSIBLE             1003
 #define INVALID_ACTION_ARGUMENT         1004
-#define POP_XDP_ACTION_FAILED           1005
+#define XDP_POP_POLICY_FAIL             1005
 #define XDP_GROW_TCP_HEADER_FAIL        1006
 #define XDP_ADD_TCP_OPT_FAIL            1007
-#define XDP_TAIL_CALL_FAIL              1008
+#define TAIL_CALL_FAIL                  1008
+#define XDP_CLEAR_SELECTOR_CHAIN_FAIL   1009
+#define XDP_GET_ACTION_CHAIN_ID_FAIL    1010
+#define XDP_SET_ACTION_CHAIN_ID_FAIL    1011
+#define XDP_ACTION_CHAIN_ID_NOTFOUND    1012
+#define TC_E_ACTION_CHAIN_ID_NOTFOUND   1013
+#define NOT_TCP                         1013
+#define TC_GET_CB_FAIL                  1014
+#define SUBMIT_EVENT_FAIL               1015
+#define CHECK_MPTCP_OPTS_FAIL           1016
 #define NOT_TARGET                      1
 
 #endif
