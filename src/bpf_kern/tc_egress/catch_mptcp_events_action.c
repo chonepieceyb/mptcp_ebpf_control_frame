@@ -151,7 +151,7 @@ int catch_mptcp_events_action(struct __sk_buff *ctx) {
      * 3. catch fin signal
      */
     
-    if (tcph->fin) {
+    if (tcph->fin || tcph->rst) {
         res = send_fin_event(ctx, iph, tcph);
         goto send_event_finish;
     }

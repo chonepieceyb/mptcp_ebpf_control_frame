@@ -251,6 +251,7 @@ class PolicyChain:
         self.action_chains = action_chains 
 
     def set(self, idx, *, action_chain_id = None, **kw):
+        assert(self.action_chain != None and "set action chain is None")
         ref_cnt = None 
         try:
             #set action_chain first 
@@ -286,7 +287,7 @@ class XDPPolicyChain(PolicyChain):
         XDPActionChains.config()
         cls.is_config = True 
        
-    def __init__(self, selector_chain, action_chain):
+    def __init__(self, selector_chain, action_chain = None):
         assert(XDPPolicyChain.is_config)
         super().__init__(XDPActionChains(), selector_chain, action_chain)
 
@@ -297,31 +298,52 @@ class TCEgressPolicyChain(PolicyChain):
         TCEgressActionChains.config()
         cls.is_config = True 
        
-    def __init__(self, selector_chain, action_chain):
+    def __init__(self, selector_chain, action_chain = None):
         assert(TCEgressPolicyChain.is_config)
         super().__init__(TCEgressActionChains(), selector_chain, action_chain)
 
 if __name__ == '__main__':
-    #test xdp policy chain 
+    '''
+        #test xdp policy chain 
+        XDPSelectorChain.config()
+        XDPPolicyChain.config()
+        sc = XDPSelectorChain()
+        if not sc.init: 
+            sc.add("tcp4", selector_op_type_t.SELECTOR_OR).add("tcp2", selector_op_type_t.SELECTOR_OR)
+            sc.submit()
+
+        ac = XDPActionChain()
+        ac.add("set_recv_win", recv_win = 1500)
+
+        pc = XDPPolicyChain(sc, ac)
+        action_id = pc.set(1,local_addr = "172.16.12.128", remote_addr = "172.16.12.131")
+        pc.set(0, action_chain_id = action_id, local_addr = "172.16.12.128", remote_addr = "172.16.12.131", local_port = 1000, remote_port = 1000)
+        
+        while True: 
+            try:
+                pass
+            except KeyboardInterrupt:
+                pc.delete(1, local_addr = "172.16.12.128", remote_addr = "172.16.12.131")
+                pc.delete(0, local_addr = "172.16.12.128", remote_addr = "172.16.12.131", local_port = 5000, remote_port = 5000)
+                break 
+    '''
+    import time 
     XDPSelectorChain.config()
     XDPPolicyChain.config()
     sc = XDPSelectorChain()
     if not sc.init: 
-        sc.add("tcp4", selector_op_type_t.SELECTOR_OR).add("tcp2", selector_op_type_t.SELECTOR_OR)
+        sc.add("tcp2", selector_op_type_t.SELECTOR_OR)
         sc.submit()
 
     ac = XDPActionChain()
-    ac.add("set_recv_win", recv_win = 1500)
-
+    ac.add("set_recv_win", recv_win = 1)
     pc = XDPPolicyChain(sc, ac)
-    action_id = pc.set(1,local_addr = "172.16.12.128", remote_addr = "172.16.12.131")
-    pc.set(0, action_chain_id = action_id, local_addr = "172.16.12.128", remote_addr = "172.16.12.131", local_port = 1000, remote_port = 1000)
-    
-    while True: 
-        try:
-            pass
-        except KeyboardInterrupt:
-            pc.delete(1, local_addr = "172.16.12.128", remote_addr = "172.16.12.131")
-            pc.delete(0, local_addr = "172.16.12.128", remote_addr = "172.16.12.131", local_port = 5000, remote_port = 5000)
-            break 
-    
+    pc.set(0, remote_addr = "172.16.12.131", local_addr = "172.16.12.128")
+    pc.set(0, remote_addr = "172.16.12.132", local_addr = "172.16.12.128")
+    pc.set(0, remote_addr = "172.16.12.133", local_addr = "172.16.12.128")
+    pc.set(0, remote_addr = "172.16.12.131", local_addr = "172.16.12.129")
+    pc.set(0, remote_addr = "172.16.12.132", local_addr = "172.16.12.129")
+    pc.set(0, remote_addr = "172.16.12.133", local_addr = "172.16.12.129")
+    pc.set(0, remote_addr = "172.16.12.131", local_addr = "172.16.12.130")
+    pc.set(0, remote_addr = "172.16.12.132", local_addr = "172.16.12.130")
+    pc.set(0, remote_addr = "172.16.12.133", local_addr = "172.16.12.130")

@@ -267,7 +267,7 @@ class BPFObjectLoader(BPFLoaderBase):
             self.runtime_progs[name] = BPFLoaderBase.BPFRunTimeInfo(-1, True)
 
 class BPFBCCLoader(BPFLoaderBase): 
-    def __init__(self, path, *, progs, pin_maps, cflags = [], unpin_only_fail = True,  **kw):
+    def __init__(self, path, *, progs, pin_maps, cflags = None, unpin_only_fail = True,  **kw):
         '''
         compile bpf src file , load func and pin the func
         load bpf object using libbpf 

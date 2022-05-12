@@ -41,7 +41,6 @@ SEC("tc")
 #endif 
 int tcp_selector(struct __sk_buff *ctx) 
 {
-    bpfprintk("tcp selector\n");
     int res;
 
     TC_SELECTOR_PRE_SEC 

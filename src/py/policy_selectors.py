@@ -177,14 +177,23 @@ class Tcp4TupleSelector(SelectorBase):
         assert(map_fd > 0)
         self.map_fd = map_fd 
                                                                                                                                            
-    def update(self, *, local_addr, remote_addr, local_port, remote_port, action_chain_id):
+    def update(self, *, action_chain_id , **kw):
         old_action_chain_id = None 
         tcp4 = tcp4tuple()
         setzero(tcp4)
-        tcp4.local_addr = bytes_2_val(inet_aton(local_addr))
-        tcp4.remote_addr = bytes_2_val(inet_aton(remote_addr))
-        tcp4.local_port= htons(local_port)
-        tcp4.remote_port = htons(remote_port)
+        if "tcp4" in kw:
+            #tcp4tuple (local_port, remote_port, local_addr, remote_addr)
+            tcpflow = kw["tcp4"]
+            tcp4.local_port= tcpflow[0]
+            tcp4.remote_port = tcpflow[1]
+            tcp4.local_addr = tcpflow[2]
+            tcp4.remote_addr = tcpflow[3]   
+        else:
+            tcp4.local_addr = bytes_2_val(inet_aton(kw["local_addr"]))
+            tcp4.remote_addr = bytes_2_val(inet_aton(kw["remote_addr"]))
+            tcp4.local_port= htons(kw["local_port"])
+            tcp4.remote_port = htons(kw["remote_port"])
+
         _action_chain_id = action_chain_id_t(action_chain_id)
         _old_action_chain_id = action_chain_id_t()
         try:
@@ -196,16 +205,23 @@ class Tcp4TupleSelector(SelectorBase):
             bpf_map_update_elem(self.map_fd, ct.byref(tcp4), ct.byref(_action_chain_id))
         return old_action_chain_id 
 
-    def delete(self, *, local_addr, remote_addr, local_port, remote_port):
+    def delete(self, **kw):
         action_chain_id = None 
-        
         tcp4 = tcp4tuple()
         _action_chain_id = action_chain_id_t(0)
         setzero(tcp4)
-        tcp4.local_addr = bytes_2_val(inet_aton(local_addr))
-        tcp4.remote_addr = bytes_2_val(inet_aton(remote_addr))
-        tcp4.local_port= htons(local_port)
-        tcp4.remote_port = htons(remote_port)
+        if "tcp4" in kw:
+            #tcp4tuple (local_port, remote_port, local_addr, remote_addr)
+            tcpflow = kw["tcp4"]
+            tcp4.local_port= tcpflow[0]
+            tcp4.remote_port = tcpflow[1]
+            tcp4.local_addr = tcpflow[2]
+            tcp4.remote_addr = tcpflow[3]   
+        else:
+            tcp4.local_addr = bytes_2_val(inet_aton(kw["local_addr"]))
+            tcp4.remote_addr = bytes_2_val(inet_aton(kw["remote_addr"]))
+            tcp4.local_port= htons(kw["local_port"])
+            tcp4.remote_port = htons(kw["remote_port"])
         try:
             bpf_map_lookup_elem(self.map_fd, ct.byref(tcp4), ct.byref(_action_chain_id))      
             action_chain_id = _action_chain_id.value
@@ -234,7 +250,6 @@ class XDPTcp4TupleSelector(Tcp4TupleSelector):
 if __name__ == '__main__': 
     XDPTcp2TupleSelector.config()
     XDPTcp4TupleSelector.config()
-
     tcp2 = XDPTcp2TupleSelector(selector_op_type_t.SELECTOR_OR)
     tcp4= XDPTcp4TupleSelector(selector_op_type_t.SELECTOR_AND)
     

@@ -75,3 +75,10 @@ def unpin(p, prefix = BPF_VFS_PREFIX):
 
 def setzero(c_type_object):
     ct.memset(ct.byref(c_type_object), ct.c_int(0), ct.sizeof(c_type_object))
+
+
+if __name__ == '__main__':
+    print("local_ip %s"%int2ip(int.from_bytes(val_2_bytes(2148274348, 4), byteorder = "big", signed = False)))
+    print("local_port %s"%int.from_bytes(val_2_bytes(29142, 2), byteorder = "big", signed = False))
+    print("remote_ip %s"%int2ip(int.from_bytes(val_2_bytes( 2198605996, 4), byteorder = "big", signed = False)))
+    print("remote_port %s"%int.from_bytes(val_2_bytes(24810, 2), byteorder = "big", signed = False))
