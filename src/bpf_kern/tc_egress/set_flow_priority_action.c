@@ -7,17 +7,12 @@ struct {
     __uint(type, BPF_MAP_TYPE_PROG_ARRAY);
     __type(key, int);
     __type(value, int);
-    __uint(max_entries, MAX_XDP_ACTION_NUM);
-} xdp_actions SEC(".maps");
-
-
-#ifdef DEBUG
-DEBUG_DATA_DEF_SEC
-#endif
+    __uint(max_entries, MAX_TC_EGRESS_ACTION_NUM);
+} tc_egress_actions SEC(".maps");
 
 #else
 
-BPF_TABLE_PINNED("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM, XDP_ACTIONS_PATH);
+BPF_TABLE_PINNED("prog", int, int, tc_egress_actions, MAX_TC_EGRESS_ACTION_NUM, TC_EGRESS_ACTIONS_PATH);
 
 #endif
 
@@ -29,21 +24,15 @@ struct flow_prio_param_t {
 };
 
 #ifdef NOBCC
-SEC("xdp")
+SEC("tc")
 #endif 
-int set_flow_priority_action(struct xdp_md *ctx) {
-    #ifdef DEBUG
-    INIT_DEBUG_EVENT(SET_FLOW_PRIORITY_EVENT)
-
-    RECORD_DEBUG_EVENTS(start)
-    #endif
-
+int set_flow_priority_action(struct __sk_buff *ctx) {
     int res;
     int modified = 0;
     
-    XDP_POLICY_PRE_SEC
+    TC_POLICY_PRE_SEC
 
-    xdp_action_t *a = (xdp_action_t *)(&POLICY);
+    tc_action_t *a = (tc_action_t *)(&POLICY);
 
     //get param
     struct flow_prio_param_t *flow_param; 
@@ -91,9 +80,9 @@ int set_flow_priority_action(struct xdp_md *ctx) {
     }
 
     __u16 tcp_opt_len = tcphl - 20;
-    res = xdp_grow_tcp_header(ctx, &nh, tcp_opt_len, sizeof(struct mp_prio), &modified);  //nh.pos set to the end 
+    res = tc_grow_tcp_header(ctx, &nh, tcp_opt_len, sizeof(struct mp_prio), &modified);  //nh.pos set to the end 
     if (res < 0) {
-        res = -XDP_GROW_TCP_HEADER_FAIL;
+        res = -TC_GROW_TCP_HEADER_FAIL;
         goto fail;;
     }
     
@@ -123,35 +112,28 @@ int set_flow_priority_action(struct xdp_md *ctx) {
     //recompute checksum , mp_prio 4 bytes
     add_tcpopt_csum(&tcph->check, &prio_opt, sizeof(struct mp_prio));
     
-    XDP_ACTION_POST_SEC   
+    TC_ACTION_POST_SEC   
 
 next_action:                          
-    #ifdef DEBUG
-    RECORD_DEBUG_EVENTS(end)
-    SEND_DEBUG_EVENTS
-    #endif
 
 #ifdef NOBCC
-    bpf_tail_call(ctx, &xdp_actions, NEXT_IDX);
+    bpf_tail_call(ctx, &tc_egress_actions, NEXT_IDX);
 #else
-    xdp_actions.call(ctx, NEXT_IDX);
+    tc_egress_actions.call(ctx, NEXT_IDX);
 #endif 
     res = -TAIL_CALL_FAIL;                      
     goto fail;
 
-fail:
+out_of_bound:
+fail: 
     if (modified) {
-        return XDP_DROP;
+        return TC_ACT_SHOT;
     } else {
-        return XDP_PASS;
+        return TC_ACT_UNSPEC;
     }
 exit:
-    #ifdef DEBUG
-    RECORD_DEBUG_EVENTS(end)
-    SEND_DEBUG_EVENTS
-    #endif
-
-    return XDP_PASS;
+    //bpf_trace_printk("finish!");
+    return TC_ACT_UNSPEC;
 }
 
 #ifdef NOBCC

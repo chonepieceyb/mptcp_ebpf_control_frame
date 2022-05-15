@@ -27,6 +27,10 @@ struct {
     __uint(max_entries, XDP_MAX_TCP2TUPLE_NUM);
 } xdp_tcp2tuple_map SEC(".maps");
 
+#ifdef DEBUG
+DEBUG_DATA_DEF_SEC
+#endif
+
 #else
 
 BPF_TABLE_PINNED("prog", int, int, xdp_selectors, MAX_XDP_SELECTOR_NUM,  XDP_SELECTORS_PATH);
@@ -42,6 +46,11 @@ SEC("xdp")
 #endif 
 int tcp2tuple_selector(struct xdp_md *ctx) 
 {
+    #ifdef DEBUG
+    INIT_DEBUG_EVENT(TCP2SEL)
+    RECORD_DEBUG_EVENTS(start)
+    #endif
+
     int res;
 
     XDP_SELECTOR_PRE_SEC 
@@ -78,16 +87,33 @@ int tcp2tuple_selector(struct xdp_md *ctx)
     
     XDP_SELECTOR_POST_SEC
 
-#ifndef NOBCC
 next_selector:                                  
+    #ifdef DEBUG
+    RECORD_DEBUG_EVENTS(end)
+    SEND_DEBUG_EVENTS
+    #endif
+
+#ifdef NOBCC
+    bpf_tail_call(ctx, &xdp_selectors, NEXT_IDX);
+#else
     xdp_selectors.call(ctx, NEXT_IDX);
-    res = -TAIL_CALL_FAIL;                     
-    goto fail;                                 
-action_entry:                                  
-    xdp_actions.call(ctx, XDP_ACTION_ENTRY);
-    res = -TAIL_CALL_FAIL;                     
-    goto fail;                                 
 #endif 
+    res = -TAIL_CALL_FAIL;                     
+    goto fail;                                 
+
+action_entry:                                  
+    #ifdef DEBUG
+    RECORD_DEBUG_EVENTS(end)
+    SEND_DEBUG_EVENTS
+    #endif
+
+#ifdef NOBCC
+    bpf_tail_call(ctx, &xdp_actions, XDP_ACTION_ENTRY);
+#else
+    xdp_actions.call(ctx, XDP_ACTION_ENTRY);
+#endif 
+    res = -TAIL_CALL_FAIL;                     
+    goto fail;                                 
 
 not_target:
     return XDP_PASS;

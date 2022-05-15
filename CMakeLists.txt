@@ -10,6 +10,14 @@ set(BPF_KERN_TARGETS "${CMAKE_INSTALL_PREFIX}/bpf_kern_objs")
 
 #add_definitions(-DNOBCC)
 
+OPTION(DEBUG 
+    "debug mode"
+    OFF)
+
+if (DEBUG)
+add_definitions(-DDEBUG)
+endif (DEBUG)
+
 #sub dir 
 #add_subdirectory("${BPF_KERN_SRC_FILES}/tc" "${BPF_KERN_TARGETS}/tc")
 add_subdirectory("${BPF_KERN_SRC_FILES}/tc_egress")

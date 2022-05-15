@@ -336,7 +336,7 @@ def bpf_map_lookup_elem(fd, key , value):
         value : ctypes pointer value (void *)
     '''
     res = lib.bpf_map_lookup_elem(ct.c_int(fd), key, value)
-    check_res("bpf_map_delete_elem", res)
+    check_res("bpf_map_lookup_elem", res)
 
 def bpf_map_lookup_and_delete_elem(fd, key, value):
     '''

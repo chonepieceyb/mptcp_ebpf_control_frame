@@ -17,6 +17,10 @@ struct {
     __uint(max_entries, MAX_XDP_ACTION_CHAIN_NUM);
 } xdp_action_chains SEC(".maps");
 
+#ifdef DEBUG
+DEBUG_DATA_DEF_SEC
+#endif
+
 #else
 BPF_TABLE_PINNED("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM,  XDP_ACTIONS_PATH);
 BPF_TABLE_PINNED("hash", action_chain_id_t, xdp_action_chain_t, xdp_action_chains, MAX_XDP_ACTION_CHAIN_NUM, XDP_ACTION_CHAINS_PATH);
@@ -27,6 +31,12 @@ SEC("xdp")
 #endif 
 int action_entry(struct xdp_md *ctx)
 {
+    #ifdef DEBUG
+    INIT_DEBUG_EVENT(ACTION_ENTRY)
+
+    RECORD_DEBUG_EVENTS(start)
+    #endif
+
     int res;
     action_chain_id_t chain_key;
     
@@ -65,6 +75,11 @@ int action_entry(struct xdp_md *ctx)
         goto not_target;
     }
         
+    #ifdef DEBUG
+    RECORD_DEBUG_EVENTS(end)
+    SEND_DEBUG_EVENTS
+    #endif
+
 #ifdef NOBCC
     bpf_tail_call(ctx, &xdp_actions, first_policy);
 #else

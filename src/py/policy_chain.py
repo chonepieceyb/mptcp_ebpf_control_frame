@@ -22,12 +22,15 @@ XDP_ACTION_DICT = {
 
 TC_EGRESS_ACTION_DICT = {
     "set_recv_win" : TcESetRecvWin,
-    "catch_mptcp_events" : TcECatchMPTCPEvents
+    "catch_mptcp_events" : TcECatchMPTCPEvents,
+    "set_flow_prio" : TcESetFlowPrio,
+    "rm_add_addr": TcERemoveAddAddr
 }
 
 XDP_SELECTOR_DICT = {
     "tcp4" : XDPTcp4TupleSelector,
-    "tcp2" : XDPTcp2TupleSelector
+    "tcp2" : XDPTcp2TupleSelector,
+    "tcp"  : XDPTcpSelector
 }
 
 TC_EGRESS_SELECTOR_DICT = {
@@ -41,7 +44,7 @@ def add_selector(dict, name, op, **kw):
     return sel_cls(op, **kw)
 
 class SelectorChain:
-    def __init__(self, direction, selector_chain_fd):
+    def __init__(self, direction, selector_chain_fd, *, should_init = False):
         self.init = False
         assert(selector_chain_fd > 0)
         self.selector_chain_fd = selector_chain_fd
@@ -55,7 +58,8 @@ class SelectorChain:
         else:
             raise RuntimeError("unkonw direction")
         self.selectors = []
-        self._init_selectors()
+        if should_init: 
+            self._init_selectors()
 
     def __getitem__(self, key):
         assert(key >=0 and key < len(self.selectors))
@@ -331,19 +335,19 @@ if __name__ == '__main__':
     XDPSelectorChain.config()
     XDPPolicyChain.config()
     sc = XDPSelectorChain()
-    if not sc.init: 
-        sc.add("tcp2", selector_op_type_t.SELECTOR_OR)
-        sc.submit()
+    sc.add("tcp2", selector_op_type_t.SELECTOR_OR)
+    sc.submit()
 
     ac = XDPActionChain()
-    ac.add("set_recv_win", recv_win = 1)
+    #ac.add("set_recv_win", recv_win = 1)
+    ac.add("set_flow_prio", backup = 1)
     pc = XDPPolicyChain(sc, ac)
-    pc.set(0, remote_addr = "172.16.12.131", local_addr = "172.16.12.128")
+    #pc.set(0, remote_addr = "172.16.12.131", local_addr = "172.16.12.128")
     pc.set(0, remote_addr = "172.16.12.132", local_addr = "172.16.12.128")
-    pc.set(0, remote_addr = "172.16.12.133", local_addr = "172.16.12.128")
+    #pc.set(0, remote_addr = "172.16.12.133", local_addr = "172.16.12.128")
     pc.set(0, remote_addr = "172.16.12.131", local_addr = "172.16.12.129")
-    pc.set(0, remote_addr = "172.16.12.132", local_addr = "172.16.12.129")
+    #pc.set(0, remote_addr = "172.16.12.132", local_addr = "172.16.12.129")
     pc.set(0, remote_addr = "172.16.12.133", local_addr = "172.16.12.129")
     pc.set(0, remote_addr = "172.16.12.131", local_addr = "172.16.12.130")
     pc.set(0, remote_addr = "172.16.12.132", local_addr = "172.16.12.130")
-    pc.set(0, remote_addr = "172.16.12.133", local_addr = "172.16.12.130")
+    #pc.set(0, remote_addr = "172.16.12.133", local_addr = "172.16.12.130")

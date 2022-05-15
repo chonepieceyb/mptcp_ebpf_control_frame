@@ -10,6 +10,11 @@ struct {
     __uint(max_entries, MAX_XDP_ACTION_NUM);
 } xdp_actions SEC(".maps");
 
+
+#ifdef DEBUG
+DEBUG_DATA_DEF_SEC
+#endif
+
 #else
 
 BPF_TABLE_PINNED("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM, XDP_ACTIONS_PATH);
@@ -20,6 +25,11 @@ BPF_TABLE_PINNED("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM, XDP_ACTIONS_
 SEC("xdp")
 #endif 
 int set_recv_win_action(struct xdp_md *ctx) {
+    #ifdef DEBUG
+    INIT_DEBUG_EVENT(SET_RECV_WIN_EVENT)
+    RECORD_DEBUG_EVENTS(start)
+    #endif
+
     int res;
     
     XDP_POLICY_PRE_SEC
@@ -56,18 +66,30 @@ int set_recv_win_action(struct xdp_md *ctx) {
 
     XDP_ACTION_POST_SEC
  
-#ifndef NOBCC
 next_action:                          
+    #ifdef DEBUG
+    RECORD_DEBUG_EVENTS(end)
+    SEND_DEBUG_EVENTS
+    #endif
+
+#ifdef NOBCC
+    bpf_tail_call(ctx, &xdp_actions, NEXT_IDX);
+#else
     xdp_actions.call(ctx, NEXT_IDX);
+#endif 
     res = -TAIL_CALL_FAIL;                      
     goto fail;
-#endif 
 
 out_of_bound:
 fail: 
     return XDP_PASS;
 
 exit:
+    #ifdef DEBUG
+    RECORD_DEBUG_EVENTS(end)
+    SEND_DEBUG_EVENTS
+    #endif
+
     //bpf_trace_printk("finish!");
     return XDP_PASS;
 

@@ -13,7 +13,7 @@ def raw_to_pkt(raw_pkt) :
 class TCTestCase(unittest.TestCase):
     SKB_OUT_SIZE = 1514 # mtu1500 + 14 eth size
 
-    def tc_test_run(self, given_packet, expected_packet, expected_return):
+    def tc_test_run(self, given_packet, expected_packet, expected_return, repeat = 1):
         size = len(given_packet)
 
         given_packet = ct.create_string_buffer(raw(given_packet), size)
@@ -22,7 +22,6 @@ class TCTestCase(unittest.TestCase):
         packet_output_size = ct.c_uint32()
         test_retval = ct.c_int32()
         duration = ct.c_uint32()
-        repeat = 1 
         ret = libbcc.lib.bpf_prog_test_run(self.fd,
                                             repeat,
                                             ct.byref(given_packet),
@@ -52,7 +51,8 @@ class TCTestCase(unittest.TestCase):
             expected_packet.show2()
             hexdump(expected_packet)
             raise(e)
-    
+        return duration.value 
+
     def setup(self, fd):
         self.fd = fd
 
@@ -73,6 +73,44 @@ def test_set_recv_win_egress(tc_tester):
     tc_tester.tc_test_run(pkt, epkt, -1)
     print("+++++test set recv win finish! ++++++++")
 
+def test_set_flow_prio_egress1(tc_tester):
+    print("+++++test flow prio ingress 1 ++++++++")
+    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='SA', window = 100,  options=[(30,b'\x51'),(1,b'')])
+    epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='SA', window = 100,  options=[(30,b'\x51'),(1,b'')])
+    
+    ac = TCEgressActionChain()
+    ac.add("set_flow_prio", backup = 1, addr_id = None)
+    policy = TCEgressPolicyChain(selector_chain, ac)
+    policy.set(0, remote_addr = "172.16.12.128", local_addr = "172.16.12.131")
+    duration = tc_tester.tc_test_run(pkt, epkt, -1)
+    print("+++++finish test flow prio ingress 1 ++++++++")
+    return duration 
+
+def test_set_flow_prio_egress2(tc_tester):
+    print("+++++test flow prio ingress 2 ++++++++")
+    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 100,  options=[(30,b'\x51'),(1,b'')])
+    epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', window = 100,  options=[(30,b'\x51'),(1,b''), (30,b'\x50\x02')])
+    
+    ac = TCEgressActionChain()
+    ac.add("set_flow_prio", backup = 0, addr_id = 2)
+    policy = TCEgressPolicyChain(selector_chain, ac)
+    policy.set(0, remote_addr = "172.16.12.128", local_addr = "172.16.12.131")
+    duration = tc_tester.tc_test_run(pkt, epkt, -1)
+    print("+++++finish test flow prio ingress 2 ++++++++")
+    return duration
+
+def test_rm_addr(tc_tester):
+    print("+++++test_rm_addr++++++++")
+    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', options=[(30,b'\x34\x05\xdf\x03\x44\x95'),(30, b'\x20\x01\xe5\x7f\x0c\x4f')])
+    epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='A', options=[(1,b''),(1,b''),(1,b''),(1,b''),(1,b''),(1,b''),(1,b''),(1,b''),(30, b'\x20\x01\xe5\x7f\x0c\x4f')])
+    ac = TCEgressActionChain()
+    ac.add("rm_add_addr")
+    policy = TCEgressPolicyChain(selector_chain, ac)
+    policy.set(0, remote_addr = "172.16.12.128", local_addr = "172.16.12.131")
+    duration = tc_tester.tc_test_run(pkt, epkt, -1)
+    print("+++++test_rm_addr finish! ++++++++")
+    return duration 
+
 def test_action_chain(tc_tester):
     print("+++++test_action_chain ++++++++")
     pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='S', window = 100)
@@ -84,8 +122,6 @@ def test_action_chain(tc_tester):
     policy.set(0, remote_addr = "172.16.12.128", local_addr = "172.16.12.131")
     tc_tester.tc_test_run(pkt, epkt, -1)
     print("+++++test_action_chain++++++++")
-
-
 
 def test_selector_chain(tc_tester):
     print("+++++test_selector_chain++++++++")
@@ -108,7 +144,6 @@ def test_selector_chain(tc_tester):
     tc_tester.tc_test_run(pkt, epkt, -1)
     tc_tester.tc_test_run(pkt2, epkt2, -1)
     print("+++++finish test_selector_chain+++++++")
-
 
 def test_catch_mptcp_option(tc_tester):
     print("+++++test_catch_option++++++++")
@@ -145,10 +180,13 @@ if __name__ == '__main__':
 
           print("start test")
           try: 
-            #test_set_recv_win_egress(tester)
-            #test_action_chain(tester)
-            #test_selector_chain(tester)
-            test_catch_mptcp_option(tester)
+            test_set_recv_win_egress(tester)
+            test_set_flow_prio_egress1(tester)
+            test_set_flow_prio_egress2(tester)
+            test_rm_addr(tester)
+            test_action_chain(tester)
+            test_selector_chain(tester)
+            #test_catch_mptcp_option(tester)
             print("end test")    
           except Exception as e:
             print(e) 

@@ -8,14 +8,6 @@
 #include "common.h"
 #include "error.h"
 
-#ifdef NOBCC
-
-#include <stddef.h>
-#include <linux/bpf.h> 
-#include <bpf/bpf_helpers.h>
-#include <bpf/bpf_endian.h>
-
-#endif
 
 #define SWAP(type, lhp, rhp){\
     type tmp = (*((type*)(lhp))) ^ (*((type*)(rhp)));\
@@ -140,51 +132,6 @@ next:                                   \
     __u8 SELECTOR_OP = SELECTOR->op;
 
 //res next_idx , fail, not_target
-#ifdef NOBCC
-
-#define XDP_SELECTOR_POST_SEC \
-    if (ACTION_CHAIN_ID == NULL) { \
-        CHECK_SELECTOR_NOMATCH(SELECTOR_OP); \
-    }                                   \
-    CHECK_SELECTOR_MATCH(SELECTOR_OP);   \
-next_or:\
-    if (NEXT_IDX == DEFAULT_POLICY) {   \
-        goto not_target;                \
-    }                                   \
-    goto next_selector;                     \
-next_and:                                        \
-    if (NEXT_IDX == DEFAULT_POLICY) {            \
-        goto exit;                               \
-    }                                            \
-    goto next_selector;                              \
-exit:                                             \
-    res = xdp_clear_policy_chain(ctx, NEXT_IDX);  \
-    CHECK_RES(res);\
-    res = xdp_set_action_chain_id(ctx, ACTION_CHAIN_ID);\
-    CHECK_RES(res);\
-    goto action_entry;                  \
-next_selector:                                  \
-    bpf_tail_call(ctx, &xdp_selectors, NEXT_IDX);  \
-    res = -TAIL_CALL_FAIL;                     \
-    goto fail;                                 \
-action_entry:                                  \
-    bpf_tail_call(ctx, &xdp_actions, XDP_ACTION_ENTRY);  \
-    res = -TAIL_CALL_FAIL;                     \
-    goto fail;                                 \
-
-
-#define XDP_ACTION_POST_SEC \
-next:                                   \
-    if (NEXT_IDX == DEFAULT_POLICY) {\
-        goto exit;                   \
-    }                                \
-    goto next_action;                 \
-next_action:                          \
-    bpf_tail_call(ctx,&xdp_actions, NEXT_IDX);     \
-    res = -TAIL_CALL_FAIL;                      \
-    goto fail;
-
-#else 
 
 #define XDP_SELECTOR_POST_SEC \
     if (ACTION_CHAIN_ID == NULL) { \
@@ -214,7 +161,6 @@ next:                                   \
         goto exit;                   \
     }                                \
     goto next_action;
-#endif 
 
 #ifdef NOBCC
 static __always_inline __sum16 csum16_add(__sum16 csum, __be16 addend)
@@ -697,7 +643,7 @@ static __always_inline void update_tcphlen_csum(
 //return 0 if success
 //return negative if fail
 static __always_inline int xdp_grow_tcp_header(struct xdp_md *ctx, struct hdr_cursor *nh,  __u16 tcp_opt_len, int bytes, int *modified) {
-    if (bytes <= 0) {
+    if (bytes <= 0 || bytes > 40 - tcp_opt_len) {
         *modified = 0;
         goto fail;
     }
@@ -736,6 +682,116 @@ static __always_inline int xdp_grow_tcp_header(struct xdp_md *ctx, struct hdr_cu
     return 0;
 
 fail:
+    return -1;
+}
+
+//#define TC_HEADER_NORMAL_LEN sizeof(struct iphdr) + sizeof(struct tcphdr) 
+#define TC_HEADER_NORMAL_LEN 20
+
+struct tc_pkt_header_buf_t {
+    char normal_header[TC_HEADER_NORMAL_LEN];
+    char tcp_opts[40];
+};
+
+
+static __always_inline int tc_store_header(struct tc_pkt_header_buf_t *temp, struct hdr_cursor *nh, void *data_end, __u16 tcp_opt_len) {
+    void *pkt_src = nh->pos;
+
+    CHECK_BOUND_BY_SIZE(pkt_src, data_end, TC_HEADER_NORMAL_LEN)
+    __builtin_memcpy(&temp->normal_header, pkt_src, TC_HEADER_NORMAL_LEN);
+    pkt_src += TC_HEADER_NORMAL_LEN;
+
+    void *dst = (void*)(&temp->tcp_opts);
+    __u16 tl4 = tcp_opt_len >> 2;  
+    COPY_TCP_OPT_FROM_P(0, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(1, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(2, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(3, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(4, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(5, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(6, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(7, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(8, tl4, dst, pkt_src, data_end);
+    COPY_TCP_OPT_FROM_P(9, tl4, dst, pkt_src, data_end);
+
+out_of_bound: 
+    return -1;
+
+out: 
+    nh->pos = (void*)pkt_src;
+    return 0;
+}
+
+static __always_inline int tc_recover_header(const struct tc_pkt_header_buf_t *temp, struct hdr_cursor *nh, void *data_end, __u16 tcp_opt_len) {
+    void *pkt_dst = nh->pos;
+    CHECK_BOUND_BY_SIZE(pkt_dst, data_end, TC_HEADER_NORMAL_LEN);
+    __builtin_memcpy(pkt_dst, &temp->normal_header, TC_HEADER_NORMAL_LEN);
+    pkt_dst += TC_HEADER_NORMAL_LEN;
+
+    __u16 tl4 = tcp_opt_len >> 2;  
+
+    void *src = (void*)(&temp->tcp_opts);
+
+    COPY_TCP_OPT_TO_P(0, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(1, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(2, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(3, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(4, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(5, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(6, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(7, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(8, tl4, pkt_dst, src, data_end);
+    COPY_TCP_OPT_TO_P(9, tl4, pkt_dst, src, data_end);
+
+out_of_bound:
+    return -1;
+out:
+    nh->pos = pkt_dst;
+    return 0;
+}
+
+static __always_inline int tc_grow_tcp_header(struct __sk_buff *ctx, struct hdr_cursor *nh,  __u16 tcp_opt_len, int bytes, int *modified) {
+    if (bytes <= 0 || bytes >= 40 - tcp_opt_len) {
+        *modified = 0;
+        goto fail;
+    }
+    int res; 
+    void * data = (void *)(long)ctx->data;
+
+    void * data_end =  (void *)(long)ctx->data_end; 
+    nh->pos = data + NORMAL_H_LEN - TC_HEADER_NORMAL_LEN;
+
+    struct tc_pkt_header_buf_t buf;
+    __builtin_memset(&buf, 0, sizeof(struct tc_pkt_header_buf_t));
+
+    //1. store header to buf
+    res = tc_store_header(&buf, nh, data_end, tcp_opt_len);
+    if (res < 0) {
+        *modified = 0;
+        goto fail;
+    }
+
+    //2. grow header
+    res = bpf_skb_adjust_room(ctx, bytes, BPF_ADJ_ROOM_NET, 0);
+    if (res < 0) {
+        *modified = 1;
+        goto fail;
+    }
+
+    //3 reset data and data_end
+    data =  (void *)(long)ctx->data; 
+    data_end =  (void *)(long)ctx->data_end; 
+
+    //4. recover header 
+    nh->pos = data + NORMAL_H_LEN - TC_HEADER_NORMAL_LEN;
+    res = tc_recover_header(&buf, nh, data_end, tcp_opt_len);
+    if (res < 0) {
+        *modified = 1;
+        goto fail;
+    }
+    return 0;
+
+fail: 
     return -1;
 }
 
@@ -788,7 +844,7 @@ static __always_inline void set_tcp_nop2(__u16 *dst) {
     *dst = 0x0101;
 }
 
-static __always_inline int xdp_rm_tcp_header(struct hdr_cursor *nh, void *data_end, struct tcphdr *tcph, __u16 size, int *modified) {
+static __always_inline int rm_tcp_header(struct hdr_cursor *nh, void *data_end, struct tcphdr *tcph, __u16 size, int *modified) {
     //set option to nop and update checksum 
     if ((size & 0x1) != 0) {
         //size % 2 != 0
@@ -864,7 +920,6 @@ static __always_inline int xdp_set_policy_chain(struct xdp_md *ctx, xdp_policy_t
         if (policy == DEFAULT_POLICY) break;
         policy_num++;    
     }
-    
     if (policy_num == 0) {
         *first_policy = DEFAULT_POLICY;
         return 0;
@@ -926,19 +981,44 @@ static __always_inline int xdp_clear_policy_chain(struct xdp_md *ctx, __u8 next_
         if ((void*)(p + 1) > data) {
             goto fail;
         }
-        count++;
         next_idx = p->chain.next_idx;
         if (next_idx == DEFAULT_POLICY) {
             break;
         }
+        count++;
+        p+=1;
     }
     res = bpf_xdp_adjust_meta(ctx, count * sizeof(xdp_policy_t));
     if (res < 0) goto fail;
     return 0;
 fail:
-    res = -XDP_CLEAR_SELECTOR_CHAIN_FAIL;
-    return -1;
+    return -XDP_CLEAR_SELECTOR_CHAIN_FAIL;
 }
 
+typedef unsigned long long u64;
+
+#ifdef DEBUG
+
+#define DEBUG_DATA_DEF_SEC \
+struct {                        \
+    __uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY); \
+    __type(key, int);                           \
+    __type(value, int);                          \
+    __uint(max_entries, MAX_DEBUG_EVENTS_SIZE);   \
+} debug_events SEC(".maps");          
+
+#define INIT_DEBUG_EVENT(e) \
+    struct debug_time_event_t debug_time_event; \
+    __builtin_memset(&debug_time_event, 0, sizeof(struct debug_time_event_t));  \
+    debug_time_event.event = e;
+
+#define RECORD_DEBUG_EVENTS(stage) { \
+    debug_time_event.stage = bpf_ktime_get_ns();                             \
+}\
+
+#define SEND_DEBUG_EVENTS       \
+    bpf_perf_event_output(ctx, &debug_events, BPF_F_CURRENT_CPU, &debug_time_event, sizeof(struct debug_time_event_t)); \
+
+#endif 
 
 #endif

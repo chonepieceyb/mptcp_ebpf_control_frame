@@ -545,8 +545,5 @@ class TCLoader:
         assert(direction in ["ingress", "egress"])
         return TCLoader.add_tc_filter_cmd%(interface, direction, da_flag, obj)
    
-   
-    
-
 
     

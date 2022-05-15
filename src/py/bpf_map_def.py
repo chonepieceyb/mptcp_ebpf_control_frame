@@ -33,6 +33,17 @@ XDP_TCP2TUPLE_MAP_PATH = os.path.join(BPF_VFS_PREFIX, CONFIG.progect_pin_prefix,
 XDP_TCP4TUPLE_MAP = "xdp_tcp4tuple_map"
 XDP_TCP4TUPLE_MAP_PATH = os.path.join(BPF_VFS_PREFIX, CONFIG.progect_pin_prefix, XDP_TCP4TUPLE_MAP)
 
+XDP_TCP_DEFAULT_ACTION = "xdp_tcp_default_action"
+XDP_TCP_DEFAULT_ACTION_PATH = os.path.join(BPF_VFS_PREFIX, CONFIG.progect_pin_prefix, XDP_TCP_DEFAULT_ACTION)
+
+XDP_DEBUG_EVENTS = 'debug_events'
+XDP_DEBUG_EVENTS_PATH = os.path.join(BPF_VFS_PREFIX, CONFIG.progect_pin_prefix, XDP_DEBUG_EVENTS)
+
+XDP_DEBUG_EVENTS_MAP = {
+    "pin_path" : XDP_DEBUG_EVENTS_PATH,
+    "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+}
+
 XDP_SELECTOR_ENTRY = {
     "src_path" : os.path.join(XDP_PROG_PATH, "selector_entry.c"),
     "obj_path" : os.path.join(BPF_XDP_OBJS_PATH, "selector_entry.c.o"),
@@ -141,6 +152,35 @@ XDP_SELECTORS_TAIL_CALL_LIST = [
         "tail_call_map" : {
             "tcp4tuple_selector" : 2
         }
+    },
+    {
+        "src_path" : os.path.join(XDP_PROG_PATH, "tcp_selector.c"),
+        "obj_path" : os.path.join(BPF_XDP_OBJS_PATH, "tcp_selector.c.o"),
+        "progs" : {
+            "tcp_selector" : {
+                "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_XDP
+            }
+        },
+        "pin_maps" : {
+            XDP_SELECTORS : {
+                "pin_path" : XDP_SELECTORS_PATH,
+                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+            },
+            XDP_ACTIONS : {
+                "pin_path" : XDP_ACTIONS_PATH,
+                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+            },
+            XDP_TCP_DEFAULT_ACTION : {
+                "pin_path" : XDP_TCP_DEFAULT_ACTION_PATH,
+                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+            }
+        },
+        "kw": {
+            "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+        },
+        "tail_call_map" : {
+            "tcp_selector" : 3
+        }
     }
 ]
 
@@ -209,6 +249,15 @@ XDP_ACTIONS_TAIL_CALL_LIST = [
         }
     }
 ]
+
+
+def xdp_set_debug():
+    XDP_SELECTOR_ENTRY["pin_maps"][XDP_DEBUG_EVENTS] = XDP_DEBUG_EVENTS_MAP
+    XDP_ACTION_ENTRY["pin_maps"][XDP_DEBUG_EVENTS] = XDP_DEBUG_EVENTS_MAP
+    for v in XDP_ACTIONS_TAIL_CALL_LIST:
+        v["pin_maps"][XDP_DEBUG_EVENTS] = XDP_DEBUG_EVENTS_MAP
+    for v in XDP_SELECTORS_TAIL_CALL_LIST:
+        v["pin_maps"][XDP_DEBUG_EVENTS] = XDP_DEBUG_EVENTS_MAP
 
 XDP_SELECTOR_NAME_IDX_MAP = get_name_idx_map(XDP_SELECTORS_TAIL_CALL_LIST)
 XDP_SELECTOR_IDX_NAME_MAP = get_idx_name_map(XDP_SELECTORS_TAIL_CALL_LIST)
@@ -392,6 +441,48 @@ TC_E_ACTIONS_TAIL_CALL_LIST = [
         },
         "tail_call_map" : {
             "catch_mptcp_events_action" : 2
+        }
+    },
+    {
+        "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "set_flow_priority_action.c"),
+        "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "set_flow_priority_action.c.o"),
+        "progs" : {
+            "set_flow_priority_action" : {
+                "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
+            }
+        },
+        "pin_maps" : {
+            TC_EGRESS_ACTIONS : {
+                "pin_path" : TC_EGRESS_ACTIONS_PATH,
+                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+            }
+        },
+        "kw": {
+            "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+        },
+        "tail_call_map" : {
+            "set_flow_priority_action" : 3
+        }
+    },
+    {
+        "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "rm_add_addr_action.c"),
+        "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "rm_add_addr_action.c.o"),
+        "progs" : {
+            "rm_add_addr_action" : {
+                "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
+            }
+        },
+        "pin_maps" : {
+            TC_EGRESS_ACTIONS : {
+                "pin_path" : TC_EGRESS_ACTIONS_PATH,
+                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+            }
+        },
+        "kw": {
+            "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+        },
+        "tail_call_map" : {
+            "rm_add_addr_action" : 4
         }
     }
 ]

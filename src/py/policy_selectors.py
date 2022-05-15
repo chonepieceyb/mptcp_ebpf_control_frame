@@ -88,6 +88,19 @@ class TcpSelector(SelectorBase):
                     pass 
         return action_chain_id 
 
+class XDPTcpSelector(TcpSelector):
+    xdp_tcp_default_action_path = XDP_TCP_DEFAULT_ACTION_PATH
+    is_config = False 
+
+    @classmethod
+    def config(cls):
+        cls.map_fd  = bpf_obj_get(cls.xdp_tcp_default_action_path)
+        cls.is_config = True 
+
+    def __init__(self, selector_op):
+        assert(XDPTcpSelector.is_config)
+        super().__init__(Direction.INGRESS, selector_op, XDPTcpSelector.map_fd)
+
 class TcETcpSelector(TcpSelector):
     tc_egress_tcp_default_action_path = TC_EGRESS_TCP_DEFAULT_ACTION_PATH
     is_config = False 

@@ -88,6 +88,11 @@ class XDPRemoveAddAddr(RemoveAddAddr):
     def __init__(self):
         super().__init__(Direction.INGRESS)
 
+class TcERemoveAddAddr(RemoveAddAddr):
+    @ArgWrapper(rm_add_addr_parser)
+    def __init__(self):
+        super().__init__(Direction.EGRESS)
+
 def set_recv_win_arg_parser(arg_list):
     parser = argparse.ArgumentParser(description="set recv win ingress action", prog = "set recv win")
     parser.add_argument("--recv_win", type = int,  required = True, help = "set packet recv window (0-65535) << win_shift")
@@ -179,6 +184,11 @@ class XDPSetFlowPrio(SetFlowPrio):
     @ArgWrapper(set_flow_prio_arg_parser)
     def __init__(self, **kw):
         super().__init__(Direction.INGRESS, **kw)
+
+class TcESetFlowPrio(SetFlowPrio):
+    @ArgWrapper(set_flow_prio_arg_parser)
+    def __init__(self, **kw):
+        super().__init__(Direction.EGRESS, **kw)
 
 if __name__ == '__main__':
     import sys 

@@ -457,4 +457,27 @@ struct default_action_t {
     int enable;
 };
 
+#ifdef DEBUG
+
+#define MAX_DEBUG_EVENTS_SIZE 128
+#define DEBUG_EVENTS_PATH "/sys/fs/bpf/eMPTCP/debug_events"
+
+#define SET_RECV_WIN_EVENT 1
+#define SET_FLOW_PRIORITY_EVENT 2
+#define RM_ADD_ADDR 3
+#define RECOVER_ADD_ADDR 4
+#define TCP2SEL 5
+#define TCP4SEL 6
+#define TCPSEL 7
+#define SEL_ENTRY 8 
+#define ACTION_ENTRY 9
+
+struct debug_time_event_t {
+    int event;
+    __u64 start;
+    __u64 end;
+};
+
+#endif 
+
 #endif 

@@ -17,6 +17,10 @@ struct {
     __uint(max_entries, 1);
 } xdp_selector_chain SEC(".maps");
 
+#ifdef DEBUG
+DEBUG_DATA_DEF_SEC
+#endif
+
 #else
 BPF_TABLE_PINNED("prog", int, int, xdp_selectors, MAX_XDP_SELECTOR_NUM,  XDP_SELECTORS_PATH);
 BPF_TABLE_PINNED("array", int, xdp_selector_chain_t, xdp_selector_chain, 1, XDP_SELECTOR_CHAIN_PATH);
@@ -27,6 +31,12 @@ SEC("xdp")
 #endif 
 int selector_entry(struct xdp_md *ctx)
 {
+    #ifdef DEBUG
+    INIT_DEBUG_EVENT(SEL_ENTRY)
+
+    RECORD_DEBUG_EVENTS(start)
+    #endif
+
     //get selector chain 
     int res;
     int chain_key = 0;
@@ -59,6 +69,11 @@ int selector_entry(struct xdp_md *ctx)
         goto not_target;
     }
     
+#ifdef DEBUG
+    RECORD_DEBUG_EVENTS(end)
+    SEND_DEBUG_EVENTS
+#endif
+
 #ifdef NOBCC
     bpf_tail_call(ctx, &xdp_selectors, first_policy);
 #else

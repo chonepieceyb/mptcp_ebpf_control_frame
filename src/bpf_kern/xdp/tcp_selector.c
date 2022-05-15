@@ -2,8 +2,7 @@
 #include "utils.h"
 #include "error.h"
 
-#define XDP_MAX_TCP4TUPLE_NUM 100000
-#define XDP_TCP4TUPLE_MAP_PATH "/sys/fs/bpf/eMPTCP/xdp_tcp4tuple_map"
+#define XDP_TCP_DEFAULT_ACTION_PATH "sys/fs/bpf/eMPTCP/xdp_tcp_default_action"
 
 #ifdef NOBCC
 struct {
@@ -21,11 +20,11 @@ struct {
 } xdp_actions SEC(".maps");
 
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
-    __type(key, struct tcp4tuple);
-    __type(value, action_chain_id_t);
-    __uint(max_entries, XDP_MAX_TCP4TUPLE_NUM);
-} xdp_tcp4tuple_map SEC(".maps");
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __type(key, int);
+    __type(value, struct default_action_t);
+    __uint(max_entries, 1);
+} xdp_tcp_default_action SEC(".maps");
 
 #ifdef DEBUG
 DEBUG_DATA_DEF_SEC
@@ -33,20 +32,21 @@ DEBUG_DATA_DEF_SEC
 
 #else
 
-BPF_TABLE_PINNED("prog", int, int, xdp_selectors, MAX_XDP_SELECTOR_NUM,  XDP_SELECTORS_PATH);
+BPF_TABLE_PINNED("prog", int, int, xdp_selectors, MAX_XDP_SELECTOR_NUM, XDP_SELECTORS_PATH);
 
 BPF_TABLE_PINNED("prog", int, int, xdp_actions, MAX_XDP_ACTION_NUM, XDP_ACTIONS_PATH);
 
-BPF_TABLE_PINNED("hash", struct tcp4tuple, action_chain_id_t, xdp_tcp4tuple_map, XDP_MAX_TCP4TUPLE_NUM, XDP_TCP4TUPLE_MAP_PATH);
+BPF_TABLE_PINNED("array", int, struct default_action_t, xdp_tcp_default_action, 1, XDP_TCP_DEFAULT_ACTION_PATH);
 
 #endif 
 
 #ifdef NOBCC
 SEC("xdp")
 #endif 
-int tcp4tuple_selector(struct xdp_md *ctx) {
-     #ifdef DEBUG
-    INIT_DEBUG_EVENT(TCP4SEL)
+int tcp_selector(struct xdp_md *ctx) 
+{
+    #ifdef DEBUG
+    INIT_DEBUG_EVENT(TCPSEL)
     RECORD_DEBUG_EVENTS(start)
     #endif
 
@@ -70,28 +70,28 @@ int tcp4tuple_selector(struct xdp_md *ctx) {
        CHECK_SELECTOR_NOMATCH(SELECTOR_OP);
     }
     
-    struct tcp4tuple tcp4t;
-    __builtin_memset(&tcp4t, 0, sizeof(struct tcp4tuple));
-
+    struct default_action_t *default_action; 
     action_chain_id_t *ACTION_CHAIN_ID;
-    //get tcp2tuple
-
-    get_tcp4tuple_in(iph, tcph, &tcp4t);
+    int zero_key = 0;
 
 #ifdef NOBCC
-    ACTION_CHAIN_ID = bpf_map_lookup_elem(&xdp_tcp4tuple_map, &tcp4t);
+    default_action = bpf_map_lookup_elem(&xdp_tcp_default_action, &zero_key);
 #else
-    ACTION_CHAIN_ID = xdp_tcp4tuple_map.lookup(&tcp4t);
+    default_action = xdp_tcp_default_action.lookup(&zero_key);
 #endif
-
+    if (default_action == NULL || !default_action->enable) {
+        ACTION_CHAIN_ID = NULL;
+    } else {
+        ACTION_CHAIN_ID = &(default_action->id);
+    }
+    
     XDP_SELECTOR_POST_SEC
 
 next_selector:                                  
-    #ifdef DEBUG
+ #ifdef DEBUG
     RECORD_DEBUG_EVENTS(end)
     SEND_DEBUG_EVENTS
     #endif
-
 #ifdef NOBCC
     bpf_tail_call(ctx, &xdp_selectors, NEXT_IDX);
 #else
@@ -101,7 +101,7 @@ next_selector:
     goto fail;                                 
 
 action_entry:                                  
-    #ifdef DEBUG
+#ifdef DEBUG
     RECORD_DEBUG_EVENTS(end)
     SEND_DEBUG_EVENTS
     #endif
@@ -114,7 +114,6 @@ action_entry:
     goto fail;                                 
 
 not_target:
-
     return XDP_PASS;
 
 out_of_bound:
@@ -124,6 +123,5 @@ fail:
 
 #ifdef NOBCC
 char _license[] SEC("license") = "GPL";
-#endif
-
+#endif 
 
