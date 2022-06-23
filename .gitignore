@@ -4,4 +4,6 @@ bin
 tags
 config/if_attach_list.config
 */__pycache__
+src/py/__pycache__
+
 

@@ -10,7 +10,9 @@ CONFIG_PATH = os.path.join(PROJECT_ROOT_PATH, "config")
 BASE_CONFIG_PATH = os.path.join(CONFIG_PATH, "base_config.yaml")
 
 XDP_PROG_PATH = os.path.join(SRC_BPF_KERN_PATH, "xdp")
-TC_PROG_PATH = os.path.join(SRC_BPF_KERN_PATH, "tc")
+TC_EGRESS_PROG_PATH = os.path.join(SRC_BPF_KERN_PATH, "tc_egress")
 BPF_OBJS_PATH = os.path.join(PROJECT_ROOT_PATH, "install", "bpf_kern_objs")
-BPF_TC_OBJS_PATH = os.path.join(BPF_OBJS_PATH, "tc")
-BPF_TC_BTF_OBJS_PATH = os.path.join(BPF_OBJS_PATH, "tc_btf")
+BPF_TC_EGRESS_OBJS_PATH = os.path.join(BPF_OBJS_PATH, "tc_egress")
+BPF_XDP_OBJS_PATH = os.path.join(BPF_OBJS_PATH, "xdp")
+
+BPF_VFS_PREFIX = "/sys/fs/bpf"

@@ -5,28 +5,9 @@ if_config_path: if_attach_list.config
 #pin object python 的参数和 c 文件参数的同步问题，我再想想怎么解决, 
 #一个可能的方案是，通过 编译 -D 选项传进去，然后用 python脚本在顶层进行编译
 #暂时先保存两份
-xdp: 
-  xdp_main: xdp_main
 
-tc:
-  tc_ingress: tc_ingress
-  tc_egress: tc_egress
+progect_pin_prefix: eMPTCP
 
-xdp_actions:
-  name: xdp_actions
-  max_entries: 1024
+#define
 
-mp_capable_perf_output:
-  name: mp_capable_perf_output
-  max_entries: 10
-
-mptcp_connects: 
-  name: mptcp_connects 
-  max_entries: 100000
-  max_subflow_entries: 16
-
-subflows:
-  name: subflows
-  max_entries: 200000
-
-tc_pin_prefix: tc/globals
+max_policy_len: 4

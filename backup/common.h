@@ -1,27 +1,17 @@
-#ifndef EMPTCP_COMMON_H
-#define EMPTCP_COMMON_H
+#ifndef MPTCP_EBPF_CONTROL_FRAME_COMMON_H
+#define MPTCP_EBPF_CONTROL_FRAME_COMMON_H
 
+#include <linux/stddef.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
-#include <linux/types.h>
-#include <linux/in.h>
-#include <linux/in6.h>
-
-#ifndef BCC_SEC
-
-#define NOBCC
-
-#endif 
-
 
 #ifdef NOBCC
 
 #include <linux/bpf.h> 
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
-#include <linux/pkt_cls.h>
 
 #ifndef __section
 #define __section(x) __attribute((section(x), used))
@@ -44,64 +34,28 @@ struct bpf_elf_map {
      __u32 inner_idx;
 };
 
+#ifndef bpfprintk
 #define bpfprintk(fmt, ...)                    \
 ({                                              \
     char ____fmt[] = fmt;                       \
     bpf_trace_printk(____fmt, sizeof(____fmt),  \
              ##__VA_ARGS__);                    \
 })
+#endif
 
 #ifndef lock_xadd
 #define lock_xadd(ptr, val)   __sync_fetch_and_add(ptr, val)
 #endif 
 
-#else
-
 #endif
-
-#define MPTCP_KIND                              30
 
 #define MPTCP_SUB_CAPABLE			0
 #define MPTCP_SUB_JOIN			        1
 #define MPTCP_SUB_DSS		                2
 
-#define MPTCP_SUB_PRIO		                5
-#define MPTCP_SUB_LEN_PRIO	                3
-#define MPTCP_SUB_LEN_PRIO_ADDR	                4
-
 #define MPTCP_SUB_CAPABLE_FLAG			(1 << 0)
 #define MPTCP_SUB_JOIN_FLAG			(1 << 1)
 #define MPTCP_SUB_DSS_FLAG		        (1 << 2)
-
-#define MPTCP_SUB_ADD_ADDR		        3
-
-struct tcp_flags {
-#if defined(__LITTLE_ENDIAN_BITFIELD)
-	__u16	res1:4,
-		doff:4,
-		fin:1,
-		syn:1,
-		rst:1,
-		psh:1,
-		ack:1,
-		urg:1,
-		ece:1,
-		cwr:1;
-#elif defined(__BIG_ENDIAN_BITFIELD)
-	__u16	doff:4,
-		res1:4,
-		cwr:1,
-		ece:1,
-		urg:1,
-		ack:1,
-		psh:1,
-		rst:1,
-		syn:1,
-		fin:1;
-#else
-#error	"Adjust your <asm/byteorder.h> defines"
-#endif	
-};
 
 struct mptcp_option {
 	__u8	kind;
@@ -226,13 +180,12 @@ struct mp_add_addr {
 
 struct mp_remove_addr {
 	__u8	kind;
-	__u8    len;
+	__u8	len;
 #if defined(__LITTLE_ENDIAN_BITFIELD)
 	__u8	rsv:4,
 		sub:4;
 #elif defined(__BIG_ENDIAN_BITFIELD)
 	__u8	sub:4,
-
 		rsv:4;
 #else
 #error "Adjust your <asm/byteorder.h> defines"
@@ -265,7 +218,6 @@ struct mp_fclose {
 	__u16	rsv1:4,
 		sub:4,
 		rsv2:8;
-
 #elif defined(__BIG_ENDIAN_BITFIELD)
 	__u16	sub:4,
 		rsv1:4,
@@ -307,177 +259,38 @@ struct hdr_cursor {
     void *pos;
 };
 
-#define MAX_SUBFLOW_NUM 200000
 /*tcp 4 tuple key 96bytes, network byte order*/
-struct tcp4tuple {
+struct tcp_4_tuple {
+    __be32      local_addr;
+    __be32	peer_addr;
     __be16	local_port;
-    __be16	remote_port;
-    __be32      local_addr;
-    __be32	remote_addr;
+    __be16	peer_port;
 };
 
-//for test 
-struct tcp2tuple {
-    __be32      local_addr;
-    __be32      remote_addr;
+struct mp_capable_event_t {
+    struct tcp_4_tuple  connect; 
+    __u32       sended_data;
+    __u64       peer_key;
 };
 
-typedef __u64 action_chain_id_t;
-
-/* 
- *bpf data struct define 
- */
-
-/*
-#define MAX_XDP_ENTRY_NUM 32
-#define XDP_ENTRIES_PATH "/sys/fs/bpf/eMPTCP/xdp_entries"
-*/
-
-#define DEFAULT_POLICY 0
-
-//XDP
-
-#define XDP_ACTION_ENTRY DEFAULT_POLICY
-
-#define MAX_XDP_SELECTOR_NUM 32
-#define XDP_SELECTORS_PATH "/sys/fs/bpf/eMPTCP/xdp_selectors"
-
-#define XDP_SELECTOR_CHAIN_PATH "/sys/fs/bpf/eMPTCP/xdp_selector_chain"
-
-#define MAX_XDP_ACTION_NUM 32
-#define XDP_ACTIONS_PATH "/sys/fs/bpf/eMPTCP/xdp_actions"
-
-#define MAX_XDP_ACTION_CHAIN_NUM 200000
-#define XDP_ACTION_CHAINS_PATH "/sys/fs/bpf/eMPTCP/xdp_action_chains"
-
-#define MAX_POLICY_LEN 4
-
-//TC Egress
-#define TC_CB_MAX_LEN       5
-#define TC_EGRESS_ACTION_ENTRY DEFAULT_POLICY
-
-#define MAX_TC_EGRESS_SELECTOR_NUM 32
-#define TC_EGRESS_SELECTORS_PATH "/sys/fs/bpf/eMPTCP/tc_egress_selectors"
-
-#define TC_EGRESS_SELECTOR_CHAIN_PATH "/sys/fs/bpf/eMPTCP/tc_egress_selector_chain"
-
-#define MAX_TC_EGRESS_ACTION_NUM 32
-#define TC_EGRESS_ACTIONS_PATH "/sys/fs/bpf/eMPTCP/tc_egress_actions"
-
-#define MAX_TC_EGRESS_ACTION_CHAIN_NUM 200000
-#define TC_EGRESS_ACTION_CHAINS_PATH "/sys/fs/bpf/eMPTCP/tc_egress_action_chains"
-
-#define MAX_TC_EGRESS_EMPTCP_EVENTS_SIZE 128
-#define TC_EGRESS_EMPTCP_EVENTS_PATH "/sys/fs/bpf/eMPTCP/tc_egress_eMPTCP_events"
-
-union chain_t{
-    __u8 idx;
-    __u8 next_idx;
-
+#define MAX_SUBFLOWS 1 << 4
+/*mptcp_connects data struct define*/
+struct mptcp_connect {
+    __u32       flow_nums;    //__syn_fetch_and_add only support 32bit or 64 bit
+    struct tcp_4_tuple subflows[MAX_SUBFLOWS];
 };
 
-struct policy_t {
-    union chain_t chain;
-    __u8 rsv1;
-    __u8 rsv2;
-    __u8 rsv3;
+//暂时不加锁
+/*subflows*/
+struct subflow {
+    __s8        address_id;
+    __s8        direction;
+    __s16       action;
+    __u32       token;
+    __u32       sended_pkts;
+    __u32       recved_pkts;
+    __u64       sended_data;
+    __u64       recved_data;
 };
-typedef struct policy_t xdp_policy_t;
-typedef struct policy_t tc_policy_t;
-
-struct chain_meta_t {
-    __u8 idx;
-    __u8 len;
-    __u16 rsv;
-};
-typedef struct chain_meta_t tc_chain_meta_t;
-
-enum selector_op_type {
-    SELECTOR_AND = 0,
-    SELECTOR_OR = 1
-};
-
-struct selector_t {
-    union chain_t chain;
-    __u8 op;
-    __u16 rsv;
-};
-
-typedef struct selector_t xdp_selector_t;
-typedef struct selector_t tc_selector_t;
-
-#define SELECTOR_CHAIN_MAX_LEN MAX_POLICY_LEN
-struct selector_chain_t {
-    struct selector_t selectors[SELECTOR_CHAIN_MAX_LEN];
-}n;
-
-typedef struct selector_chain_t xdp_selector_chain_t;
-typedef struct selector_chain_t tc_selector_chain_t;
-
-enum param_type {
-    IMME = 0,
-    MEM = 1,
-};
-
-struct action_t {
-    union chain_t chain;
-    __u8       param_type:2,
-               rsv:6;
-    union {
-        __u16 imme;
-        struct {
-            __u8 offset;
-            __u8 len;
-        } mem;
-    } param;
-};
-
-typedef struct action_t xdp_action_t; 
-typedef struct action_t tc_action_t;
-
-#define ACTION_CHAIN_MAX_LEN MAX_POLICY_LEN
-struct action_chain_t {
-    struct action_t actions[ACTION_CHAIN_MAX_LEN];
-    __u32 ref_cnt;
-};
-
-typedef struct action_chain_t xdp_action_chain_t;
-typedef struct action_chain_t tc_action_chain_t;
-
-struct perf_event_header_t {
-    __u64  time_ns;
-    __u16  event;
-    __u16  len;
-};
-
-typedef struct perf_event_header_t eMPTCP_event_header_t;
-
-struct default_action_t {
-    action_chain_id_t id;
-    int enable;
-};
-
-#ifdef DEBUG
-
-#define MAX_DEBUG_EVENTS_SIZE 128
-#define DEBUG_EVENTS_PATH "/sys/fs/bpf/eMPTCP/debug_events"
-
-#define SET_RECV_WIN_EVENT 1
-#define SET_FLOW_PRIORITY_EVENT 2
-#define RM_ADD_ADDR 3
-#define RECOVER_ADD_ADDR 4
-#define TCP2SEL 5
-#define TCP4SEL 6
-#define TCPSEL 7
-#define SEL_ENTRY 8 
-#define ACTION_ENTRY 9
-
-struct debug_time_event_t {
-    int event;
-    __u64 start;
-    __u64 end;
-};
-
-#endif 
 
 #endif 
