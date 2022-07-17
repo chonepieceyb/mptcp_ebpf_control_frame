@@ -336,10 +336,10 @@ TC_EGRESS_ACTION_ENTRY = {
 }
 
 TC_EGRESS_ACTION_SET = {
-    "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "set_hit.c"),
-    "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "set_hit.c.o"),
+    "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "hit_buffer.c"),
+    "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "hit_buffer.c.o"),
     "progs" : {
-        "set_hit" : {
+        "hit_buffer" : {
             "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
         }
     },
@@ -551,10 +551,10 @@ TC_E_ACTIONS_TAIL_CALL_LIST = [
         }
     },
     {
-        "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "set_hit.c"),
-        "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "set_hit.c.o"),
+        "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "hit_buffer.c"),
+        "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "hit_buffer.c.o"),
         "progs" : {
-            "set_hit" : {
+            "hit_buffer" : {
                 "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
             }
         },
@@ -568,7 +568,7 @@ TC_E_ACTIONS_TAIL_CALL_LIST = [
             "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
         },
         "tail_call_map" : {
-            "set_hit" : 7
+            "hit_buffer" : 7
         }
     }
 ]

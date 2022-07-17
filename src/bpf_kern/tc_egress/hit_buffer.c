@@ -1,7 +1,6 @@
 #include "common.h"
 #include "utils.h"
 #include "error.h"
-// #include  "/usr/include/bcc/compat/linux/bpf.h"
 
 #define bpfprint(fmt, ...)                        \
     ({                                             \
@@ -76,6 +75,7 @@ struct {
 #else
 
 BPF_TABLE_PINNED("prog", int, int, tc_egress_actions, MAX_TC_EGRESS_ACTION_NUM, TC_EGRESS_ACTIONS_PATH);
+BPF_TABLE_PINNED("hash", u32, int, check_hit, 1024, "/sys/fs/bpf/eMPTCP/check_hit");
 
 #endif
 
@@ -84,8 +84,6 @@ SEC("tc")
 #endif 
 int hit_buffer(struct __sk_buff *ctx) {
     int res;
-
-    //TC_POLICY_PRE_SEC
 
     void *data = (void *)(__u64)(ctx->data);
     void *data_end = (void *)(__u64)(ctx->data_end);
@@ -141,7 +139,7 @@ int hit_buffer(struct __sk_buff *ctx) {
     else if(*result == 0){
         return TC_ACT_OK;
     }
-    else if(*result ==1){
+    else{
     char *payload = data + sizeof(*eth) + sizeof(*iph) + tcphl;
     CHECK_BOUND(payload, data_end);
 
@@ -209,7 +207,10 @@ int hit_buffer(struct __sk_buff *ctx) {
         return bpf_redirect(2, 0);
     }
     else if(eth->h_dest[5]==0x3e){
-        return bpf_redirect(5, 0);
+        return bpf_redirect(3, 0);
+    }
+    else{
+        return TC_ACT_SHOT;
     }
 
     }
@@ -219,7 +220,6 @@ fail:
     return TC_ACT_UNSPEC;
 
 exit:
-    //bpf_trace_printk("finish!");
     return TC_ACT_UNSPEC;
 }
 #ifdef NOBCC

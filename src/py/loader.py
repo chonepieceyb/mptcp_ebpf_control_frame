@@ -21,13 +21,13 @@ class TCEgressProgLoader:
                 print("atttach tc egress to %s"%interface)
                 ifindex = if_nametoindex(interface)
                 egress_hook = init_libbpf_opt(bpf_tc_hook, ifindex = ifindex, attach_point = BPF_TC_ATTACH_POINT.BPF_TC_INGRESS)
-                opts = init_libbpf_opt(bpf_tc_opts, prog_fd = ae.get_prog_fd("set_hit"))
+                opts = init_libbpf_opt(bpf_tc_opts, prog_fd = ae.get_prog_fd("hit_buffer"))
                 bpf_tc_attach(egress_hook, opts)
 
     def detach(self):
         self._destroy_hooks()
         # unpin_obj(TC_EGRESS_SELECTOR_ENTRY)
-        unpin_obj(TC_EGRESS_ACTION_ENTRY)
+        unpin_obj(TC_EGRESS_ACTION_SET)
         # for obj in TC_E_SELECTORS_TAIL_CALL_LIST:
             # unpin_obj(obj)
         # for obj in TC_E_ACTIONS_TAIL_CALL_LIST:
@@ -50,6 +50,6 @@ class TCEgressProgLoader:
                 pass
 
 if __name__ == '__main__' :
-   tool = TCEgressProgLoader(["ens33"], BPFObjectLoader)
-#    tool.attach()
-   tool.detach()
+   tool = TCEgressProgLoader(["ens33","ens38"], BPFObjectLoader)
+   tool.attach()
+#    tool.detach()

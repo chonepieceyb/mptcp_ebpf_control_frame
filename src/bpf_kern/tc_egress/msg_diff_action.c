@@ -34,8 +34,6 @@ int msg_diff_action(struct __sk_buff *ctx) {
     int res;
 
     TC_POLICY_PRE_SEC
-    
-    // bpf_skb_pull_data(ctx, ctx->len);
 
     void *data_end = (void*)(__u64)ctx->data_end;
     void *data = (void*)(__u64)ctx->data;
@@ -57,8 +55,6 @@ int msg_diff_action(struct __sk_buff *ctx) {
         return TC_ACT_OK; 
     }
 
-    // char *payload = data + sizeof(*eth) + sizeof(*iph) + sizeof(*tcph)+32;
-
     char *payload = data + sizeof(*eth) + sizeof(*iph) + tcphl;
 
     if((void*)(payload+1) > data_end){
@@ -76,42 +72,24 @@ int msg_diff_action(struct __sk_buff *ctx) {
     //src2 00:0c:29:e2:0a:3e
     unsigned char dst_2[ETH_ALEN] = {0x00,0x0c,0x29,0xc8,0xb8,0x9a};
     // unsigned char dst_2[ETH_ALEN] = {0x00,0x0c,0x29,0xc8,0xb8,0xa4};
-    unsigned ifindex_1 = 2;
-    unsigned ifindex_2 = 3;
+    // unsigned ifindex_1 = 2;
+    // unsigned ifindex_2 = 3;
 
-    //604219584  C0A80324
+    //192.168.71.138 -1975015232
     if(payload[0]==97 && iph->daddr==-1975015232 && eth->h_dest[5]!=0x90){
-    // if(payload[0]==97 && iph->daddr==0x8A47A8C0){
-    // if(payload[0]==97){
-        bpfprint("redirect A!\n");
-        // return TC_ACT_OK;
-        // memcpy(eth->h_source, src_1, ETH_ALEN);
         memcpy(eth->h_dest, dst_1, ETH_ALEN);
-        int action;
-        action = bpf_redirect(2, 0);
-        bpfprint("result:[%d]",action);
-        // return bpf_redirect(ifindex_1, 0);
-        return action;
+        return bpf_redirect(2, 0);
         // return TC_ACT_OK;
     }
-    // else if (payload[0]==98)
-    //-1941460800 -1975015232
-    // bpfprint("[%d]",iph)
     //C0A8478A
-    // else if(iph->daddr!=0x8A47A8C0)
-    else if (payload[0]==98 && iph->daddr==604219584 && eth->h_dest[5]!=0x9a)
-    // else if (payload[0]==98 && iph->daddr==0x2403A8C0)
-    // else if (payload[0]==98 && iph->daddr!=0x8A47A8C0)
+    // 192.168.3.66
+    else if (payload[0]==98 && iph->daddr==1107536064 && eth->h_dest[5]!=0x9a)
     {   
-        bpfprint("redirect B!\n");
-        // memcpy(eth->h_source, src_2, ETH_ALEN);
         memcpy(eth->h_dest, dst_2, ETH_ALEN);
-        // bpfprint("res[%d]",bpf_redirect(5, 0));
-        return bpf_redirect(6, 0);
-        // return TC_ACT_OK;
+        return bpf_redirect(3, 0);
     }
     else{
-        bpfprint("continue\n");
+        // bpfprint("continue\n");
         goto fail;
     }
 
