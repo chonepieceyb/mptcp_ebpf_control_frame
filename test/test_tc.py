@@ -52,8 +52,10 @@ def test_get_mpcapble(tc_tester):
     pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='223.3.71.76', dst='223.3.93.39')/TCP(sport=452, dport = 8888, flags ='SA',ack = 2900, options=[('MSS',1400),(30,b'\x00\x81\x42\x64\x3e\xcb\x58\x73\xbb\xc3')])
     tc_tester.tc_test_run(pkt, None, -2)
 
+
 if __name__ == '__main__' : 
     tc_path = os.path.join(TEST_DIR, "tc_ingress.c")
+
     bpf = BPF(src_file=tc_path, cflags=["-I%s"%TEST_DIR])
     func = bpf.load_func("tc_ingress_main", BPF.XDP)
     

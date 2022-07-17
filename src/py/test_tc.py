@@ -156,38 +156,85 @@ def test_catch_mptcp_option(tc_tester):
     tc_tester.tc_test_run(pkt, epkt, -1)
     print("+++++end test_catch_option++++++++")
 
+# def test_msg_diff(tc_tester):
+#     print("+++++test_catch_option++++++++")
+#     pkt = Ether(dst='00:0c:29:c8:b8:9a', src='00:0c:29:e2:0a:3e')
+#     # epkt = Ether(dst='00:0c:29:c8:b8:90', src='00:0c:29:e2:0a:34') a1 b1
+#     epkt = Ether(dst='00:0c:29:c8:b8:90', src='00:0c:29:e2:0a:3e')
+#     ac = TCEgressActionChain()
+#     ac.add("msg_diff")
+#     policy = TCEgressPolicyChain(selector_chain, ac)
+#     policy.set(1)
+#     tc_tester.tc_test_run(pkt, epkt, -1)
+#     print("+++++end test_catch_option++++++++")
+
+
 if __name__ == '__main__': 
     loader = BPFObjectLoader
     clear_only_fail = False
-    with load(TC_EGRESS_SELECTOR_ENTRY, loader, unpin_only_fail=clear_only_fail) as se, \
-      load(TC_EGRESS_ACTION_ENTRY, loader, unpin_only_fail=clear_only_fail) as ae: 
-      selectors_fd = se.get_map_fd(TC_EGRESS_SELECTORS)
-      actions_fd = ae.get_map_fd(TC_EGRESS_ACTIONS)
-      action_entry_idx = ct.c_int(ACTION_ENTRY_IDX)
-      action_entry_fd = ct.c_int(ae.get_prog_fd("action_entry"))
-      bpf_map_update_elem(actions_fd, ct.byref(action_entry_idx), ct.byref(action_entry_fd))
-      with TailCallLoader(selectors_fd, TC_E_SELECTORS_TAIL_CALL_LIST, loader, clear_only_fail=clear_only_fail) as stl,\
-          TailCallLoader(actions_fd, TC_E_ACTIONS_TAIL_CALL_LIST, loader, clear_only_fail=clear_only_fail) as atl:
-          TCEgressSelectorChain.config()
-          TCEgressPolicyChain.config()
-          selector_chain = TCEgressSelectorChain()
-          if not selector_chain.init: 
-              print("create new subflo")
-              selector_chain.add("tcp2", selector_op_type_t.SELECTOR_OR).add("tcp", selector_op_type_t.SELECTOR_AND)
-              selector_chain.submit()
-          tester = TCTestCase()
-          tester.setup(se.get_prog_fd("selector_entry"))
 
-          print("start test")
-          try: 
-            test_set_recv_win_egress(tester)
-            test_set_flow_prio_egress1(tester)
-            test_set_flow_prio_egress2(tester)
-            test_rm_addr(tester)
-            test_action_chain(tester)
-            test_selector_chain(tester)
-            #test_catch_mptcp_option(tester)
-            print("end test")    
-          except Exception as e:
-            print(e) 
+    # with load(TC_EGRESS_SELECTOR_ENTRY, loader, unpin_only_fail=clear_only_fail) as se, \
+    #   load(TC_EGRESS_ACTION_ENTRY, loader, unpin_only_fail=clear_only_fail) as ae: 
+    #   selectors_fd = se.get_map_fd(TC_EGRESS_SELECTORS)
+    #   actions_fd = ae.get_map_fd(TC_EGRESS_ACTIONS)
+    #   action_entry_idx = ct.c_int(ACTION_ENTRY_IDX)
+    #   action_entry_fd = ct.c_int(ae.get_prog_fd("action_entry"))
+    #   bpf_map_update_elem(actions_fd, ct.byref(action_entry_idx), ct.byref(action_entry_fd))
+    #   with TailCallLoader(selectors_fd, TC_E_SELECTORS_TAIL_CALL_LIST, loader, clear_only_fail=clear_only_fail) as stl,\
+    #       TailCallLoader(actions_fd, TC_E_ACTIONS_TAIL_CALL_LIST, loader, clear_only_fail=clear_only_fail) as atl:
+    #     #   TCEgressSelectorChain.config()
+    #     #   TCEgressActionChains.config()
+    #       atl.load()
+    #       action_chain = TCEgressActionChains()
+    #       if not action_chain.init: 
+    #           print("create")
+    #       tester = TCTestCase()
+    #       tester.setup(ae.get_prog_fd("msg_diff_action"))
+
+    with load(TC_E_ACTIONS_TAIL_CALL_LIST[4], loader, unpin_only_fail=clear_only_fail) as ae:
+        actions_fd = ae.get_map_fd(TC_EGRESS_ACTIONS)
+        action_msg_idx = ct.c_int(5)
+        action_msg_fd = ct.c_int(ae.get_prog_fd("msg_diff_action"))
+        print(action_msg_idx)
+        print(action_msg_fd)
+        bpf_map_update_elem(actions_fd, ct.byref(action_msg_idx), ct.byref(action_msg_fd))
+        # with TailCallLoader(actions_fd, TC_E_ACTIONS_TAIL_CALL_LIST, loader, clear_only_fail=clear_only_fail) as atl:
+            # TCEgressActionChains.config()
+        #     action_chain = TCEgressActionChains()
+        tester = TCTestCase()
+        tester.setup(ae.get_prog_fd("msg_diff_action"))
+        # tester.setup(ae.get_prog_fd("rm_am_add_addr"))
+
+
+    # with load(TC_EGRESS_SELECTOR_ENTRY, loader, unpin_only_fail=clear_only_fail) as se, \
+    #   load(TC_EGRESS_ACTION_ENTRY, loader, unpin_only_fail=clear_only_fail) as ae: 
+    #   selectors_fd = se.get_map_fd(TC_EGRESS_SELECTORS)
+    #   actions_fd = ae.get_map_fd(TC_EGRESS_ACTIONS)
+    #   action_entry_idx = ct.c_int(ACTION_ENTRY_IDX)
+    #   action_entry_fd = ct.c_int(ae.get_prog_fd("action_entry"))
+    #   bpf_map_update_elem(actions_fd, ct.byref(action_entry_idx), ct.byref(action_entry_fd))
+    #   with TailCallLoader(selectors_fd, TC_E_SELECTORS_TAIL_CALL_LIST, loader, clear_only_fail=clear_only_fail) as stl,\
+    #       TailCallLoader(actions_fd, TC_E_ACTIONS_TAIL_CALL_LIST, loader, clear_only_fail=clear_only_fail) as atl:
+    #       TCEgressSelectorChain.config()
+    #       TCEgressPolicyChain.config()
+    #       selector_chain = TCEgressSelectorChain()
+    #       if not selector_chain.init: 
+    #           print("create new subflo")
+    #           selector_chain.add("tcp2", selector_op_type_t.SELECTOR_OR).add("tcp", selector_op_type_t.SELECTOR_AND)
+    #           selector_chain.submit()
+    #       tester = TCTestCase()
+    #       tester.setup(se.get_prog_fd("selector_entry"))
+
+        #   print("start test")
+        #   try: 
+        #     test_set_recv_win_egress(tester)
+        #     test_set_flow_prio_egress1(tester)
+        #     test_set_flow_prio_egress2(tester)
+        #     test_rm_addr(tester)
+        #     test_action_chain(tester)
+        #     test_selector_chain(tester)
+        #     #test_catch_mptcp_option(tester)
+        #     print("end test")    
+        #   except Exception as e:
+        #     print(e) 
 

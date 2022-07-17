@@ -335,6 +335,29 @@ TC_EGRESS_ACTION_ENTRY = {
     }
 }
 
+TC_EGRESS_ACTION_SET = {
+    "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "set_hit.c"),
+    "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "set_hit.c.o"),
+    "progs" : {
+        "set_hit" : {
+            "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
+        }
+    },
+    "pin_maps" : {
+        TC_EGRESS_ACTIONS : {
+            "pin_path" : TC_EGRESS_ACTIONS_PATH,
+            "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+        },
+        "check_hit": {
+            "pin_path" : "/sys/fs/bpf/eMPTCP/check_hit",
+            "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+        }
+    },
+    "kw": {
+        "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+    }
+}
+
 TC_E_SELECTORS_TAIL_CALL_LIST = [
     {
         "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "tcp2tuple_selector.c"),
@@ -483,6 +506,69 @@ TC_E_ACTIONS_TAIL_CALL_LIST = [
         },
         "tail_call_map" : {
             "rm_add_addr_action" : 4
+        }
+    },
+    {
+        "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "msg_diff_action.c"),
+        "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "msg_diff_action.c.o"),
+        "progs" : {
+            "msg_diff_action" : {
+                "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
+            }
+        },
+        "pin_maps" : {
+            TC_EGRESS_ACTIONS : {
+                "pin_path" : TC_EGRESS_ACTIONS_PATH,
+                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+            }
+        },
+        "kw": {
+            "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+        },
+        "tail_call_map" : {
+            "msg_diff_action" : 5
+        }
+    },
+    {
+        "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "buffer_echo.c"),
+        "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "buffer_echo.c.o"),
+        "progs" : {
+            "buffer_echo" : {
+                "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
+            }
+        },
+        "pin_maps" : {
+            TC_EGRESS_ACTIONS : {
+                "pin_path" : TC_EGRESS_ACTIONS_PATH,
+                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+            }
+        },
+        "kw": {
+            "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+        },
+        "tail_call_map" : {
+            "buffer_echo" : 6
+        }
+    },
+    {
+        "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "set_hit.c"),
+        "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "set_hit.c.o"),
+        "progs" : {
+            "set_hit" : {
+                "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
+            }
+        },
+        "pin_maps" : {
+            TC_EGRESS_ACTIONS : {
+                "pin_path" : TC_EGRESS_ACTIONS_PATH,
+                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+            }
+        },
+        "kw": {
+            "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+        },
+        "tail_call_map" : {
+            "set_hit" : 7
         }
     }
 ]

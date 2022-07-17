@@ -1,6 +1,7 @@
 #ifndef EMPTCP_UTILS_H
 #define EMPTCP_UTILS_H
 
+#include <stddef.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <linux/ip.h>

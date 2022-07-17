@@ -25,6 +25,7 @@ TC_EGRESS_ACTION_DICT = {
     "catch_mptcp_events" : TcECatchMPTCPEvents,
     "set_flow_prio" : TcESetFlowPrio,
     "rm_add_addr": TcERemoveAddAddr
+    # "msg_diff": TcEMsgDiff
 }
 
 XDP_SELECTOR_DICT = {
