@@ -33,8 +33,6 @@ SEC("tc")
 int msg_diff_action(struct __sk_buff *ctx) {
     int res;
 
-    TC_POLICY_PRE_SEC
-
     void *data_end = (void*)(__u64)ctx->data_end;
     void *data = (void*)(__u64)ctx->data;
     struct hdr_cursor nh = {.pos = data};
@@ -92,18 +90,6 @@ int msg_diff_action(struct __sk_buff *ctx) {
         // bpfprint("continue\n");
         goto fail;
     }
-
-    TC_ACTION_POST_SEC
- 
-next_action:                          
-
-#ifdef NOBCC
-    bpf_tail_call(ctx, &tc_egress_actions, NEXT_IDX);
-#else
-    tc_egress_actions.call(ctx, NEXT_IDX);
-#endif 
-    res = -TAIL_CALL_FAIL;                      
-    goto fail;
 
 out_of_bound:
 fail: 

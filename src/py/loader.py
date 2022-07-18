@@ -51,5 +51,5 @@ class TCEgressProgLoader:
 
 if __name__ == '__main__' :
    tool = TCEgressProgLoader(["ens33","ens38"], BPFObjectLoader)
-#    tool.attach()
+   #tool.attach()
    tool.detach()

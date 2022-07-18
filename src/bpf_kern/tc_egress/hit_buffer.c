@@ -123,10 +123,10 @@ int hit_buffer(struct __sk_buff *ctx) {
         int miss = 0;
         ran = bpf_ntohs(tcph->seq);
         if(ran%100  <= 90){
-            bpf_map_update_elem(&check_hit, &tcph->dest, &hit, BPF_ANY);
+            bpf_map_update_elem(&check_hit, &tcph->source, &hit, BPF_ANY);
         }
         else{
-            bpf_map_update_elem(&check_hit, &tcph->dest, &miss, BPF_ANY);
+            bpf_map_update_elem(&check_hit, &tcph->source, &miss, BPF_ANY);
         }
         return TC_ACT_OK;
     }
@@ -135,7 +135,7 @@ int hit_buffer(struct __sk_buff *ctx) {
     CHECK_BOUND(payload, data_end);
     
     int *result;
-    result = bpf_map_lookup_elem(&check_hit, &tcph->dest);
+    result = bpf_map_lookup_elem(&check_hit, &tcph->source);
     
     if(result == NULL){
         return TC_ACT_OK;
