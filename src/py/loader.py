@@ -18,7 +18,7 @@ class TCEgressProgLoader:
         self._create_hooks()
         with load(TC_EGRESS_ACTION_SET, self.loader) as ae: 
             for interface in self.interfaces:
-                print("atttach tc egress to %s"%interface)
+                print("atttach tc ingress to %s"%interface)
                 ifindex = if_nametoindex(interface)
                 egress_hook = init_libbpf_opt(bpf_tc_hook, ifindex = ifindex, attach_point = BPF_TC_ATTACH_POINT.BPF_TC_INGRESS)
                 opts = init_libbpf_opt(bpf_tc_opts, prog_fd = ae.get_prog_fd("hit_buffer"))
@@ -51,5 +51,5 @@ class TCEgressProgLoader:
 
 if __name__ == '__main__' :
    tool = TCEgressProgLoader(["ens33","ens38"], BPFObjectLoader)
-   tool.attach()
-#    tool.detach()
+#    tool.attach()
+   tool.detach()

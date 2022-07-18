@@ -131,87 +131,95 @@ int hit_buffer(struct __sk_buff *ctx) {
         return TC_ACT_OK;
     }
 
+    char *payload = data + sizeof(*eth) + sizeof(*iph) + tcphl;
+    CHECK_BOUND(payload, data_end);
+    
     int *result;
     result = bpf_map_lookup_elem(&check_hit, &tcph->dest);
+    
     if(result == NULL){
         return TC_ACT_OK;
     }
-    else if(*result == 0){
+
+    int ifhit;
+    ifhit = *result;
+    if(!ifhit){
         return TC_ACT_OK;
     }
     else{
-    char *payload = data + sizeof(*eth) + sizeof(*iph) + tcphl;
-    CHECK_BOUND(payload, data_end);
+        swap_src_dst_mac(eth);
+        swap_src_dst_ipv4(iph);
 
-    swap_src_dst_mac(eth);
-    swap_src_dst_ipv4(iph);
+        //change tot_len and update checksum
+        __be16 new_tlen = bpf_htons(60);
+        csum_replace2(&iph->check, iph->tot_len, new_tlen);  //update checksum 
+        iph->tot_len = new_tlen;
 
-    //change tot_len and update checksum
-    __be16 new_tlen = bpf_htons(60);
-    csum_replace2(&iph->check, iph->tot_len, new_tlen);  //update checksum 
-    iph->tot_len = new_tlen;
+        //no need to update checksum 
+        SWAP(__be16, &tcph->source, &tcph->dest);
 
-    //no need to update checksum 
-    SWAP(__be16, &tcph->source, &tcph->dest);
+        //ack + 1428
+        __be32 new_seq;
+        __be32 new_acks;
+        new_seq = tcph->ack_seq;
+        new_acks = bpf_htonl(bpf_ntohl(tcph->seq) + 1428);
 
-    //ack + 1428
-    __be32 new_seq;
-    __be32 new_acks;
-    new_seq = tcph->ack_seq;
-    new_acks = bpf_htonl(bpf_ntohl(tcph->seq) + 1428);
+        tcph->seq = new_seq;
+        tcph->ack_seq = new_acks;
 
-    tcph->seq = new_seq;
-    tcph->ack_seq = new_acks;
+        tcph->doff = 40 >> 2;
+        tcph->psh = 0;
 
-    tcph->doff = 40 >> 2;
-    tcph->psh = 0;
+        res = check_mptcp_opt(&nh, data_end, tcphl-20, MPTCP_SUB_DSS);
 
-    res = check_mptcp_opt(&nh, data_end, tcphl-20, MPTCP_SUB_DSS);
+        if(res < 0){
+            goto fail;
+        }
 
-    if(res < 0){
-        goto fail;
-    }
+        struct mp_dss *dss = nh.pos;
+        CHECK_BOUND(dss, data_end);
 
-    struct mp_dss *dss = nh.pos;
-    CHECK_BOUND(dss, data_end);
+        __be32 *data_ack = (void*)(dss+1);
+        CHECK_BOUND(data_ack, data_end);
 
-    __be32 *data_ack = (void*)(dss+1);
-    CHECK_BOUND(data_ack, data_end);
+        __be32 *dss_num =(void*)(dss+2);
+        CHECK_BOUND(dss_num, data_end);
 
-    __be32 *dss_num =(void*)(dss+2);
-    CHECK_BOUND(dss_num, data_end);
+        __be32 dss_num_v = *dss_num;
+        __be32 new_data_ack = bpf_htonl(bpf_ntohl(dss_num_v) + 1428);
 
-    __be32 dss_num_v = *dss_num;
-    __be32 new_data_ack = bpf_htonl(bpf_ntohl(dss_num_v) + 1428);
+        *data_ack = new_data_ack;
+        dss->len = 8;
+        dss->M = 0;
 
-    *data_ack = new_data_ack;
-    dss->len = 8;
-    dss->M = 0;
+        __be32 *option = data + sizeof(*eth) + sizeof(*iph) + 20;
+        if((void*)(option+5)>data_end){
+            goto fail;
+        }
 
-    __be32 *option = data + sizeof(*eth) + sizeof(*iph) + 20;
-    if((void*)(option+5)>data_end){
-        goto fail;
-    }
+        recompute_tcph_csum(tcph, iph, 40);
 
-    recompute_tcph_csum(tcph, iph, 40);
-
-    //shrink packet first
-    res = bpf_skb_change_tail(ctx, 74, 0);
-
-    if (res) {
+        //shrink packet first
+        res = bpf_skb_change_tail(ctx, 74, 0);
+        
         // adjust packet space
-       return TC_ACT_SHOT;
-    }
+        if (res) {
+            return TC_ACT_SHOT;
+        }
 
-    if(eth->h_dest[5]==0x34){
-        return bpf_redirect(2, 0);
-    }
-    else if(eth->h_dest[5]==0x3e){
-        return bpf_redirect(3, 0);
-    }
-    else{
-        return TC_ACT_SHOT;
-    }
+        void *data = (void *)(__u64)(ctx->data);
+        void *data_end = (void *)(__u64)(ctx->data_end);
+
+        nh.pos = data;
+        eth = nh.pos;
+        CHECK_BOUND(eth, data_end);
+
+        if(eth->h_dest[5]==0x34){
+            return bpf_redirect(2, 0);
+        }
+        else{
+            return bpf_redirect(3, 0);
+        }
 
     }
 
