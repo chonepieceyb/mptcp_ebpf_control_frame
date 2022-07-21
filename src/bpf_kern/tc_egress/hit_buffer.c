@@ -2,6 +2,16 @@
 #include "utils.h"
 #include "error.h"
 
+struct ts_option
+{
+    __u8 nop1;
+    __u8 nop2;
+    __u8 kind;
+    __u8 length;
+    __u32 tsval;
+    __u32 tsecr;
+};
+
 #define bpfprint(fmt, ...)                        \
     ({                                             \
         char ____fmt[] = fmt;                      \
@@ -169,6 +179,13 @@ int hit_buffer(struct __sk_buff *ctx) {
 
         tcph->doff = 40 >> 2;
         tcph->psh = 0;
+
+        //update timestamp
+        struct ts_option *ts = nh.pos;
+        CHECK_BOUND(ts, data_end)
+    
+        ts->tsecr = ts->tsval;
+        ts->tsval = (__u32)(bpf_ktime_get_ns()/1000);
 
         res = check_mptcp_opt(&nh, data_end, tcphl-20, MPTCP_SUB_DSS);
 

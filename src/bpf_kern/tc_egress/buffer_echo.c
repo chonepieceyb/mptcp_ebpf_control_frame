@@ -59,6 +59,17 @@ static __always_inline void recompute_tcph_csum(struct tcphdr *tcph, struct iphd
     tcph->check = ~check;
 }
 
+struct ts_option
+{
+    __u8 nop1;
+    __u8 nop2;
+    __u8 kind;
+    __u8 length;
+    __u32 tsval;
+    __u32 tsecr;
+};
+
+
 #ifdef NOBCC
 struct {
     __uint(type, BPF_MAP_TYPE_PROG_ARRAY);
@@ -106,6 +117,10 @@ int buffer_echo(struct __sk_buff *ctx) {
         return TC_ACT_OK; 
     }
 
+    if (tcph->fin) {
+        return TC_ACT_OK; 
+    }
+
     char *payload = data + sizeof(*eth) + sizeof(*iph) + tcphl;
     CHECK_BOUND(payload, data_end);
     // if((void*)(payload+1) > data_end){
@@ -148,6 +163,23 @@ int buffer_echo(struct __sk_buff *ctx) {
     tcph->doff = 40 >> 2;
     tcph->psh = 0;
 
+    // nh.pos = nh.pos + 2*sizeof(char);
+    struct ts_option *ts = nh.pos;
+    CHECK_BOUND(ts, data_end)
+    // __u32 valtemp;
+    // valtemp = ts->tsecr;
+    ts->tsecr = ts->tsval;
+    ts->tsval = (__u32)(bpf_ktime_get_ns()/1000);
+    // ts->tsval = bpf_htonl(bpf_ntohl(valtemp)+1);
+    // bpfprint("tskind->[%d]\n",ts->kind);
+    // bpfprint("tsval->[%d]\n",ts->tsval);
+    // bpfprint("tsval_h->[%d]\n",bpf_ntohl(ts->tsval));
+    // bpfprint("tsecr->[%d]\n",ts->tsecr);
+    // bpfprint("tsecr_h->[%d]\n",bpf_ntohl(ts->tsecr));
+    // bpfprint("timestamp->[%d]\n",bpf_ktime_get_ns());
+    // bpfprint("timestamp_nl->[%d]\n",bpf_htonl(bpf_ktime_get_ns()));
+
+
     res = check_mptcp_opt(&nh, data_end, tcphl-20, MPTCP_SUB_DSS);
 
     if(res < 0){
@@ -185,8 +217,8 @@ int buffer_echo(struct __sk_buff *ctx) {
        return TC_ACT_SHOT;
     }
 
-    return bpf_redirect(2,BPF_F_INGRESS);
-    // return bpf_redirect(2, 0);
+    // return bpf_redirect(2,BPF_F_INGRESS);
+    return bpf_redirect(2, 0);
 
 out_of_bound:
 fail: 
