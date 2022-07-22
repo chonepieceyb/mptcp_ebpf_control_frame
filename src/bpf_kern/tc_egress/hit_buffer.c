@@ -10,7 +10,14 @@ struct ts_option
     __u8 length;
     __u32 tsval;
     __u32 tsecr;
-};
+}__attribute__((__packed__));
+
+struct fin_info
+{
+    __u32 init_seq;
+    int flag;
+}__attribute__((__packed__));
+
 
 #define bpfprint(fmt, ...)                        \
     ({                                             \
@@ -82,10 +89,18 @@ struct {
     __type(value, int);
     __uint(max_entries, 1024);
 } check_hit SEC(".maps");
+
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, int);
+    __type(value, struct fin_info);
+    __uint(max_entries, 1024);
+} check_fin SEC(".maps");
 #else
 
 BPF_TABLE_PINNED("prog", int, int, tc_egress_actions, MAX_TC_EGRESS_ACTION_NUM, TC_EGRESS_ACTIONS_PATH);
 BPF_TABLE_PINNED("hash", u32, int, check_hit, 1024, "/sys/fs/bpf/eMPTCP/check_hit");
+BPF_TABLE_PINNED("hash", u32, int, struct fin_info, 1024, "/sys/fs/bpf/eMPTCP/check_fin");
 
 #endif
 
@@ -103,6 +118,9 @@ int hit_buffer(struct __sk_buff *ctx) {
     struct ethhdr *eth;
     struct iphdr *iph;
     struct tcphdr *tcph;
+    struct fin_info fin_info;
+    //memset?
+    __builtin_memset(&fin_info, 0, sizeof(struct fin_info));
 
     tcphl = res = is_tcp_packet(&nh, data_end, &eth, &iph, &tcph);
     
@@ -122,6 +140,12 @@ int hit_buffer(struct __sk_buff *ctx) {
             goto fail; 
         }
 
+        //fin syn info update
+        fin_info.init_seq = tcph->seq;
+        fin_info.flag = 0;
+        bpf_map_update_elem(&check_fin, &tcph->source, &fin_info, BPF_ANY);
+
+        //why mp capable
         res = check_mptcp_opt(&nh, data_end, tcphl-20, MPTCP_SUB_CAPABLE);
 
         if(res < 0){
@@ -141,18 +165,50 @@ int hit_buffer(struct __sk_buff *ctx) {
         return TC_ACT_OK;
     }
 
-    char *payload = data + sizeof(*eth) + sizeof(*iph) + tcphl;
-    CHECK_BOUND(payload, data_end);
-    
     int *result;
     result = bpf_map_lookup_elem(&check_hit, &tcph->source);
-    
+
     if(result == NULL){
         return TC_ACT_OK;
     }
 
     int ifhit;
     ifhit = *result;
+
+    if (tcph->fin && ifhit) {
+        struct fin_info *fin_get;
+        fin_get = bpf_map_lookup_elem(&check_fin, &tcph->source);
+
+        __be16 *old_begin, *new_begin;
+
+        __be32 new_finseq = fin_get->init_seq;
+        old_begin = (__be16*)(&tcph->seq);
+        new_begin = (__be16*)(&new_finseq);
+
+        #pragma unroll 2
+        for (int i = 0; i < 2; i++) {
+            csum_replace2(&tcph->check, *old_begin, *new_begin);
+            old_begin++;
+            new_begin++;
+        }
+        tcph->seq = bpf_htonl(bpf_ntohl(new_finseq) + 1);
+        fin_get->flag = 1;
+
+        return TC_ACT_OK;
+    }
+
+    char *payload = data + sizeof(*eth) + sizeof(*iph) + tcphl;
+    CHECK_BOUND(payload, data_end);
+    
+    // int *result;
+    // result = bpf_map_lookup_elem(&check_hit, &tcph->source);
+    
+    // if(result == NULL){
+    //     return TC_ACT_OK;
+    // }
+
+    // int ifhit;
+    // ifhit = *result;
     if(!ifhit){
         return TC_ACT_OK;
     }
