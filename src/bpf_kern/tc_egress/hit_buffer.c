@@ -201,7 +201,7 @@ int hit_buffer(struct __sk_buff *ctx) {
         }
         tcph->seq = new_finseq;
 
-        bpf_map_update_elem(&check_fin, &tcph->source, &fin_get, BPF_ANY);
+        bpf_map_update_elem(&check_fin, &tcph->source, fin_get, BPF_ANY);
         
         return TC_ACT_OK;
     }
