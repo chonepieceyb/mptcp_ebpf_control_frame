@@ -15,6 +15,8 @@ struct ts_option
 struct fin_info
 {
     __u32 init_seq;
+    __u32 fin_seq;
+    __u32 fin_ack;
     int flag;
 }__attribute__((__packed__));
 
@@ -142,6 +144,8 @@ int hit_buffer(struct __sk_buff *ctx) {
 
         //fin syn info update
         fin_info.init_seq = tcph->seq;
+        fin_info.fin_seq = 0;
+        fin_info.fin_ack = 0;
         fin_info.flag = 0;
         bpf_map_update_elem(&check_fin, &tcph->source, &fin_info, BPF_ANY);
 
@@ -179,9 +183,13 @@ int hit_buffer(struct __sk_buff *ctx) {
         struct fin_info *fin_get;
         fin_get = bpf_map_lookup_elem(&check_fin, &tcph->source);
 
+        fin_get->fin_seq = tcph->seq;
+        fin_get->fin_ack = tcph->ack_seq;
+        // fin_get->flag = 1;
+
         __be16 *old_begin, *new_begin;
 
-        __be32 new_finseq = fin_get->init_seq;
+        __be32 new_finseq = bpf_htonl(bpf_ntohl(fin_get->init_seq) + 1);
         old_begin = (__be16*)(&tcph->seq);
         new_begin = (__be16*)(&new_finseq);
 
@@ -191,9 +199,10 @@ int hit_buffer(struct __sk_buff *ctx) {
             old_begin++;
             new_begin++;
         }
-        tcph->seq = bpf_htonl(bpf_ntohl(new_finseq) + 1);
-        fin_get->flag = 1;
+        tcph->seq = new_finseq;
 
+        bpf_map_update_elem(&check_fin, &tcph->source, &fin_get, BPF_ANY);
+        
         return TC_ACT_OK;
     }
 

@@ -351,6 +351,29 @@ TC_EGRESS_ACTION_SET = {
         "check_hit": {
             "pin_path" : "/sys/fs/bpf/eMPTCP/check_hit",
             "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+        },
+        "check_fin": {
+            "pin_path" : "/sys/fs/bpf/eMPTCP/check_fin",
+            "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+        }
+    },
+    "kw": {
+        "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+    }
+}
+
+TC_EGRESS_ACTION_FIN = {
+    "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "server_fin.c"),
+    "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "server_fin.c.o"),
+    "progs" : {
+        "server_fin" : {
+            "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
+        }
+    },
+    "pin_maps" : {
+        TC_EGRESS_ACTIONS : {
+            "pin_path" : TC_EGRESS_ACTIONS_PATH,
+            "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
         }
     },
     "kw": {
@@ -569,6 +592,27 @@ TC_E_ACTIONS_TAIL_CALL_LIST = [
         },
         "tail_call_map" : {
             "hit_buffer" : 7
+        }
+    },
+    {
+        "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "server_fin.c"),
+        "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "server_fin.c.o"),
+        "progs" : {
+            "server_fin" : {
+                "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
+            }
+        },
+        "pin_maps" : {
+            TC_EGRESS_ACTIONS : {
+                "pin_path" : TC_EGRESS_ACTIONS_PATH,
+                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+            }
+        },
+        "kw": {
+            "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+        },
+        "tail_call_map" : {
+            "server_fin" : 8
         }
     }
 ]
