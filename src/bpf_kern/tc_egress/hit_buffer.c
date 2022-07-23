@@ -125,11 +125,11 @@ int hit_buffer(struct __sk_buff *ctx) {
         }
 
         // //why mp capable
-        // res = check_mptcp_opt(&nh, data_end, tcphl-20, MPTCP_SUB_CAPABLE);
+        res = check_mptcp_opt(&nh, data_end, tcphl-20, MPTCP_SUB_CAPABLE);
 
-        // if(res < 0){
-        //     goto fail;
-        // }
+        if(res < 0){
+            goto fail;
+        }
 
         int ran;
         int hit = 1;
