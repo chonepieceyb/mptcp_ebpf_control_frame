@@ -161,53 +161,9 @@ int hit_buffer(struct __sk_buff *ctx) {
     int ifhit;
     ifhit = *result;
 
-    // if (tcph->fin && ifhit) {
-    //     struct fin_info *fin_get;
-    //     // struct fin_info fin_1;
-    //     fin_get = bpf_map_lookup_elem(&check_fin, &tcph->source);
-
-    //     if(fin_get == NULL){
-    //         return TC_ACT_OK;
-    //     }
-
-    //     __be32 init_seq;
-    //     init_seq = ((struct fin_info*)fin_get)->init_seq;
-    //     //invalid pinter register?
-    //     // fin_1 = *fin_get;
-    //     // fin_1.init_seq = fin_get->init_seq;
-    //     // fin_1.fin_seq = tcph->seq;
-    //     // fin_1.fin_ack = tcph->ack_seq;
-    //     // fin_1.flag = 0;
-
-    //     __be16 *old_begin, *new_begin;
-
-    //     __be32 new_finseq = bpf_htonl(bpf_ntohl(fin_get->init_seq) + 1);
-    //     old_begin = (__be16*)(&tcph->seq);
-    //     new_begin = (__be16*)(&new_finseq);
-
-    //     #pragma unroll 2
-    //     for (int i = 0; i < 2; i++) {
-    //         csum_replace2(&tcph->check, *old_begin, *new_begin);
-    //         old_begin++;
-    //         new_begin++;
-    //     }
-    //     tcph->seq = new_finseq;
-
-    //     // bpf_map_update_elem(&check_fin, &tcph->source, &fin_1, BPF_ANY);
-        
-    //     return TC_ACT_OK;
-    // }
-
     if(!ifhit){
         return TC_ACT_OK;
     }
-
-    // char *payload = data + sizeof(*eth) + sizeof(*iph) + tcphl;
-    // CHECK_BOUND(payload, data_end);s
-
-    // if(data + sizeof(*eth) + sizeof(*iph) + 33 > data_end){
-    //     goto fail;
-    // }
 
     swap_src_dst_mac(eth);
     swap_src_dst_ipv4(iph);
