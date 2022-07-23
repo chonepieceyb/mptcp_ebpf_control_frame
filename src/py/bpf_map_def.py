@@ -335,51 +335,51 @@ TC_EGRESS_ACTION_ENTRY = {
     }
 }
 
-TC_EGRESS_ACTION_SET = {
-    "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "hit_buffer.c"),
-    "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "hit_buffer.c.o"),
-    "progs" : {
-        "hit_buffer" : {
-            "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
-        }
-    },
-    "pin_maps" : {
-        TC_EGRESS_ACTIONS : {
-            "pin_path" : TC_EGRESS_ACTIONS_PATH,
-            "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
-        },
-        "check_hit": {
-            "pin_path" : "/sys/fs/bpf/eMPTCP/check_hit",
-            "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
-        },
-        "check_fin": {
-            "pin_path" : "/sys/fs/bpf/eMPTCP/check_fin",
-            "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
-        }
-    },
-    "kw": {
-        "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
-    }
-}
+# TC_EGRESS_ACTION_SET = {
+#     "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "hit_buffer.c"),
+#     "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "hit_buffer.c.o"),
+#     "progs" : {
+#         "hit_buffer" : {
+#             "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
+#         }
+#     },
+#     "pin_maps" : {
+#         TC_EGRESS_ACTIONS : {
+#             "pin_path" : TC_EGRESS_ACTIONS_PATH,
+#             "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+#         },
+#         "check_hit": {
+#             "pin_path" : "/sys/fs/bpf/eMPTCP/check_hit",
+#             "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+#         },
+#         "check_fin": {
+#             "pin_path" : "/sys/fs/bpf/eMPTCP/check_fin",
+#             "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+#         }
+#     },
+#     "kw": {
+#         "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+#     }
+# }
 
-TC_EGRESS_ACTION_FIN = {
-    "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "server_fin.c"),
-    "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "server_fin.c.o"),
-    "progs" : {
-        "server_fin" : {
-            "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
-        }
-    },
-    "pin_maps" : {
-        TC_EGRESS_ACTIONS : {
-            "pin_path" : TC_EGRESS_ACTIONS_PATH,
-            "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
-        }
-    },
-    "kw": {
-        "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
-    }
-}
+# TC_EGRESS_ACTION_FIN = {
+#     "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "server_fin.c"),
+#     "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "server_fin.c.o"),
+#     "progs" : {
+#         "server_fin" : {
+#             "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
+#         }
+#     },
+#     "pin_maps" : {
+#         TC_EGRESS_ACTIONS : {
+#             "pin_path" : TC_EGRESS_ACTIONS_PATH,
+#             "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+#         }
+#     },
+#     "kw": {
+#         "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+#     }
+# }
 
 TC_E_SELECTORS_TAIL_CALL_LIST = [
     {
@@ -593,28 +593,28 @@ TC_E_ACTIONS_TAIL_CALL_LIST = [
         "tail_call_map" : {
             "hit_buffer" : 7
         }
-    },
-    {
-        "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "server_fin.c"),
-        "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "server_fin.c.o"),
-        "progs" : {
-            "server_fin" : {
-                "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
-            }
-        },
-        "pin_maps" : {
-            TC_EGRESS_ACTIONS : {
-                "pin_path" : TC_EGRESS_ACTIONS_PATH,
-                "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
-            }
-        },
-        "kw": {
-            "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
-        },
-        "tail_call_map" : {
-            "server_fin" : 8
-        }
     }
+    # {
+    #     "src_path" : os.path.join(TC_EGRESS_PROG_PATH, "server_fin.c"),
+    #     "obj_path" : os.path.join(BPF_TC_EGRESS_OBJS_PATH, "server_fin.c.o"),
+    #     "progs" : {
+    #         "server_fin" : {
+    #             "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_SCHED_CLS
+    #         }
+    #     },
+    #     "pin_maps" : {
+    #         TC_EGRESS_ACTIONS : {
+    #             "pin_path" : TC_EGRESS_ACTIONS_PATH,
+    #             "flag" : BPFLoaderBase.PIN_MAP_FLAG.PIN_IF_NOT_EXIST
+    #         }
+    #     },
+    #     "kw": {
+    #         "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
+    #     },
+    #     "tail_call_map" : {
+    #         "server_fin" : 8
+    #     }
+    # }
 ]
 
 TC_E_SELECTOR_NAME_IDX_MAP = get_name_idx_map(TC_E_SELECTORS_TAIL_CALL_LIST)
