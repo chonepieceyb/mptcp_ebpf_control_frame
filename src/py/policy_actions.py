@@ -3,8 +3,11 @@ from ctypes import byref
 from bpf_map_def import *
 from abc import abstractmethod
 from data_struct_def import *
-from utils import setzero, ArgWrapper
+from utils import *
+from scapy.all import Ether, IP, raw, TCP, hexdump
+import socket 
 import argparse
+from eMPTCP_events import *
 
 class ActionBase:
     def __init__(self, direction, action_name):
@@ -56,6 +59,69 @@ class TcECatchMPTCPEvents(CatchMPTCPEvents):
     @ArgWrapper(catch_mptcp_events_parser)
     def __init__(self):
         super().__init__(Direction.EGRESS)
+
+def recover_add_addr_parser(arg_list):
+    parser = argparse.ArgumentParser(description="recover_add_addr", prog = "recover add addr option")
+    args = parser.parse_args(arg_list)
+    return vars(args)
+
+class RecoverAddAddr(ActionBase):
+    @staticmethod 
+    def build_packet(add_addr_opt_bytes, copy_pkt_event):
+        # 先不放 timestamp 选项试一下
+        #(30,b'\x10\x07\x53\x20\xda\xef\x45\x73\x96\xf4')
+        options = []
+        opt_len = 0
+        add_addr_opt = (30, add_addr_opt_bytes)
+        opt_len = opt_len + 2 + len(add_addr_opt_bytes)   
+        dss_bytes = bytearray(copy_pkt_event.dss_opt)[2:]  # without first 2 bytes of kind and len 
+        if copy_pkt_event.dss_opt.a :
+            #8bytes
+            dss_bytes.extend(bytes(bytearray(copy_pkt_event.dss_ack)[0:8])) #little end?
+        else :
+            dss_bytes.extend(bytes(bytearray(copy_pkt_event.dss_ack)[0:4])) #little end?
+        dss_opt = (30, bytes(dss_bytes))
+        opt_len = opt_len + len(dss_bytes) + 2
+        #nop 
+        if opt_len % 4 != 0 :
+            res_opt_len = (4 - opt_len % 4) 
+            for i in range(0, res_opt_len) : 
+                options.append((1,b''))                                                           
+        options.append(add_addr_opt)
+        options.append(dss_opt)
+        
+        seq = socket.ntohl(copy_pkt_event.seq)
+        ack = socket.ntohl(copy_pkt_event.ack_seq)
+        pkt = Ether(dst=mac2str(copy_pkt_event.eth.h_dest), src=mac2str(copy_pkt_event.eth.h_source))/\
+            IP(src=int2ip(socket.ntohl(copy_pkt_event.flow.remote_addr)), dst=int2ip(socket.ntohl(copy_pkt_event.flow.local_addr)))/\
+            TCP(window = socket.ntohs(copy_pkt_event.window),sport=socket.ntohs(copy_pkt_event.flow.remote_port), dport = socket.ntohs(copy_pkt_event.flow.local_port), flags ='A',seq = seq, ack = ack, options=options)
+        return pkt
+
+    def __init__(self, direction): 
+        super().__init__(direction, "recover_add_addr_action")
+
+    def dump(self):
+        '''
+        return action , param_bytes
+        '''
+        a = action_t()
+        setzero(a)
+        a.param_type = param_type_t.IMME
+        self._set_idx(a)
+        a.param.imme = RECOVER_ADD_ADDR_EVENT
+        return a , None 
+
+    def __str__(self):
+        '''
+        return print str 
+        '''
+        action_str = '''action_name: %s'''%self.name
+        return action_str
+
+class XDPRecoverAddAddr(RecoverAddAddr):
+    @ArgWrapper(recover_add_addr_parser)
+    def __init__(self):
+        super().__init__(Direction.INGRESS)
 
 def rm_add_addr_parser(arg_list):
     parser = argparse.ArgumentParser(description="rm_add_addr", prog = "remove add addr option")
@@ -141,6 +207,28 @@ def set_flow_prio_arg_parser(arg_list):
     return vars(args)
 
 class SetFlowPrio(ActionBase):
+    @staticmethod 
+    def build_packet(copy_pkt_event):
+        # 先不放 timestamp 选项试一下
+        #(30,b'\x10\x07\x53\x20\xda\xef\x45\x73\x96\xf4')
+        options = []
+        
+        mp = mp_prio()
+        setzero(mp)
+        mp.b = 0
+        mp.sub = 5
+        print_hex(bytearray(mp)[2:])
+        mp_prio_opt = (30, bytes(bytearray(mp)[2:]))
+        #nop 
+        options.append((1,b''))                                                           
+        options.append(mp_prio_opt)
+        seq = socket.ntohl(copy_pkt_event.seq)
+        ack = socket.ntohl(copy_pkt_event.ack_seq)
+        pkt = Ether(dst=mac2str(copy_pkt_event.eth.h_dest), src=mac2str(copy_pkt_event.eth.h_source))/\
+            IP(src=int2ip(socket.ntohl(copy_pkt_event.flow.remote_addr)), dst=int2ip(socket.ntohl(copy_pkt_event.flow.local_addr)))/\
+            TCP(window = socket.ntohs(copy_pkt_event.window),sport=socket.ntohs(copy_pkt_event.flow.remote_port), dport = socket.ntohs(copy_pkt_event.flow.local_port), flags ='A',seq = seq, ack = ack, options=options)
+        return pkt
+
     def __init__(self, direction, *, backup, addr_id = None):
         super().__init__(direction, "set_flow_priority_action")
         self.backup = backup
@@ -189,6 +277,45 @@ class TcESetFlowPrio(SetFlowPrio):
     @ArgWrapper(set_flow_prio_arg_parser)
     def __init__(self, **kw):
         super().__init__(Direction.EGRESS, **kw)
+
+class Record(ActionBase):
+    def __init__(self, direction, *, pkt = True, flow = True, rtt = True):
+        super().__init__(direction, "set_flow_priority_action")
+        self.pkt = pkt 
+        self.flow = flow 
+        self.rtt = rtt 
+
+    def dump(self):
+        '''
+        return action
+        '''
+        a = action_t()
+        setzero(a)
+        self._set_idx(a)
+        a.param_tyep = param_type_t.IMME
+        
+        imme = ct.c_int16(0)
+        metric_p = ct.cast(byref(imme), ct.POINTER(metric_param_t))
+        metric_p.contents.pkt = self.pkt 
+        metric_p.contents.flow = self.flow
+        metric_p.contents.rtt = self.rtt
+
+        a.param.imme = imme.value
+        return a , None 
+
+    def __str__(self):
+        '''
+        return print str 
+        '''
+        action_str = '''pkt: %d
+flow: %d
+rtt: %d'''%(self.pkt, self.flow, self.rtt)
+        return "action_name: %s\n%s"%(self.name, action_str)
+
+class XDPRecord(Record):
+    def __init__(self, **kw):
+        super().__init__(Direction.INGRESS, **kw)
+
 
 if __name__ == '__main__':
     import sys 

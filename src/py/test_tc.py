@@ -62,7 +62,6 @@ def test_set_recv_win_egress(tc_tester):
     print("+++++test set recv win begin ++++++++")
     pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='S', window = 100)
     epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='S', window = 1600)
-    
     ac = TCEgressActionChain()
     ac.add("set_recv_win", recv_win = 1600)
     print("before add")
@@ -75,7 +74,7 @@ def test_set_recv_win_egress(tc_tester):
 
 def test_set_flow_prio_egress1(tc_tester):
     print("+++++test flow prio ingress 1 ++++++++")
-    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='SA', window = 100,  options=[(30,b'\x51'),(1,b'')])
+    pkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='SA',window = 100,  options=[(30,b'\x51'),(1,b'')])
     epkt = Ether(dst='ec:eb:b8:9c:59:99', src='ec:eb:b8:9c:69:6c')/IP(src='172.16.12.131', dst='172.16.12.128')/TCP(flags ='SA', window = 100,  options=[(30,b'\x51'),(1,b'')])
     
     ac = TCEgressActionChain()

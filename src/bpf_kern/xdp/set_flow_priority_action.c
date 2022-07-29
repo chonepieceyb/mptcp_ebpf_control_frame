@@ -10,6 +10,12 @@ struct {
     __uint(max_entries, MAX_XDP_ACTION_NUM);
 } xdp_actions SEC(".maps");
 
+struct {
+    __uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
+    __type(key, int);
+    __type(value, int);
+    __uint(max_entries, MAX_XDP_EMPTCP_EVENTS_SIZE);
+} xdp_eMPTCP_events SEC(".maps");
 
 #ifdef DEBUG
 DEBUG_DATA_DEF_SEC
@@ -27,6 +33,7 @@ struct flow_prio_param_t {
                rsv:6;
     __u8       address_id;
 };
+
 
 #ifdef NOBCC
 SEC("xdp")
@@ -72,6 +79,24 @@ int set_flow_priority_action(struct xdp_md *ctx) {
     //only work for data pkt
     if (!(tcph->ack && !tcph->syn)) {
         goto next;
+    }
+
+    if (flow_param->B && !flow_param->A) {
+        //restore the last pkt for recovering subflow 
+        // send event 
+        mptcp_copy_pkt_event e;
+        __builtin_memset(&e, 0, sizeof(mptcp_copy_pkt_event));
+        e.header.event = MP_PRIO_BACKUP_EVENT;
+        pre_copy_tcp_pkt(data_end, eth, iph, tcph, &e);
+        res = bpf_perf_event_output(ctx, &xdp_eMPTCP_events, BPF_F_CURRENT_CPU, &e, sizeof(e));
+
+        bpfprintk("send mp prio back event, %d\n",res);
+        /*
+        if (res < 0) {
+            res = -SUBMIT_EVENT_FAIL;
+            goto fail;
+        }
+        */
     }
 
     //build mp_prio opt 
@@ -123,6 +148,9 @@ int set_flow_priority_action(struct xdp_md *ctx) {
     //recompute checksum , mp_prio 4 bytes
     add_tcpopt_csum(&tcph->check, &prio_opt, sizeof(struct mp_prio));
     
+
+    bpfprintk("rm mp prio back event, %d\n",res);
+
     XDP_ACTION_POST_SEC   
 
 next_action:                          

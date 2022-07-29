@@ -17,7 +17,9 @@ SEL_NAME_CMD_DICT = {
 XDP_ACTION_DICT = {
     "set_recv_win" : XDPSetRecvWin,
     "set_flow_prio" : XDPSetFlowPrio,
-    "rm_add_addr": XDPRemoveAddAddr
+    "rm_add_addr": XDPRemoveAddAddr,
+    "recover_add_addr": XDPRecoverAddAddr,
+    "record": XDPRecord
 }
 
 TC_EGRESS_ACTION_DICT = {

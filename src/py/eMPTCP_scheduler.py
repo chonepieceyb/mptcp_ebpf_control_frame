@@ -4,16 +4,18 @@ from bpf_map_def import *
 from utils import * 
 from abc import abstractmethod
 import uuid 
-import threading
 import queue
 from functools import partial
 import time
-from socket import inet_aton
+import socket as sk 
+from socket import *
 from multiprocessing import  Process, Queue, Value, cpu_count
 from pexecute.process import ProcessLoom
 import queue
 import heapq
-from math import ceil 
+from math import ceil
+from policy_actions import RecoverAddAddr
+from eMPTCP_events import *
 
 def setup_tc(): 
     TCEgressSelectorChain.config()
@@ -29,6 +31,14 @@ def setup_tc():
 
     policy = TCEgressPolicyChain(selector_chain, ac)
     policy.set(0)
+
+def setup_unsock(): 
+    un_sock_path = "/tmp/emptcpd.socket"
+    client = sk.socket(sk.AF_UNIX, sk.SOCK_SEQPACKET)
+    client.connect(un_sock_path)
+    return client
+
+UN_SOCK = None 
 
 ##################errors#####################
 class eMPTCPTcpflowError(Exception):
@@ -54,46 +64,75 @@ class SubflowInfo:
         XDPPolicyChain.config()
         cls.xdp_selector_chain = XDPSelectorChain()
         if not cls.xdp_selector_chain.init : 
-            cls.xdp_selector_chain.add("tcp4", selector_op_type_t.SELECTOR_OR)
+            cls.xdp_selector_chain.add("tcp4", selector_op_type_t.SELECTOR_OR).add("tcp", selector_op_type_t.SELECTOR_AND)
             cls.xdp_selector_chain.submit()
-    
+        '''   
+            ac = XDPActionChain()
+            ac.add("rm_add_addr")
+            policy_chain = XDPPolicyChain(cls.xdp_selector_chain, ac)
+            policy_chain.set(1)
+        ''' 
+
     @classmethod
     def take_action(cls, action, flow):
         assert(isinstance(action, eMPTCPConnection.Action) and "not action")
-        recv_win = action.recv_win_ingress
-        if recv_win == None: 
-            return
         ac = XDPActionChain()
-        ac.add("set_recv_win", recv_win = recv_win)
+        if action.recv_win_ingress != None: 
+            ac.add("set_recv_win", recv_win = action.recv_win_ingress)
+        if action.rm_add_addr != None and action.rm_add_addr == True: 
+            ac.add("rm_add_addr")
+        if action.recover_add_addr != None and action.recover_add_addr == True: 
+            ac.add("recover_add_addr")
+        if action.backup != None and action.backup == True:
+            ac.add("set_flow_prio", backup = 1, addr_id = None)
+
         policy_chain = XDPPolicyChain(cls.xdp_selector_chain, ac)
         policy_chain.set(0, tcp4 = flow)
-      
+
     @classmethod
     def delete_action(cls, flow):
         policy_chain = XDPPolicyChain(cls.xdp_selector_chain)
         policy_chain.delete(0, tcp4 = flow)
 
-    def __init__(self,flow, *, recv_win = None,**kw):
+    def __init__(self,flow,*,start_us,**kw):
         assert(len(flow) == 4)
-        self.action = eMPTCPConnection.Action()
-        self.action.recv_win_ingress = recv_win
+        self.action = eMPTCPConnection.Action()   #recall the current action 
         self.flow = flow 
+        self.start_us = start_us 
+        self.backup_pkt = None 
+
+    def push_backup_pkt(self, e):
+        self.backup_pkt = e
+    
+    def pop_backup_pkt(self):
+        pkt = self.backup_pkt
+        self.backup_pkt = None 
+        return pkt 
 
 class eMPTCPConnection:
     class Action: 
-        def __init__(self, recv_win_ingress = None):
+        def __init__(self):
             #decisiton attributes 
-            self.recv_win_ingress = recv_win_ingress
+            self.recv_win_ingress = None
+            self.rm_add_addr = False       #rm_add_addr and recover_add_addr should not be true at the same time 
+            self.recover_add_addr = False 
+            self.backup = False 
+            self.recover_flow = False   #trigger recover flow action 
             pass
 
     #tcp4tuple (local_port, remote_port, local_addr, remote_addr)
-
 
     def __init__(self, *, local_token, remote_token):
         self.id = uuid.uuid4()
         self.local_token = local_token 
         self.remote_token = remote_token 
         self.subflows = {}  #key tcp 4 元组， value : eMPTCPSubflow
+        self.add_addr_opt_list = []
+        self.main_flow = None
+
+    def __lt__(self, other):
+        #compare for heap in scheduler 
+        return True
 
     def infos(self):
         return self.subflows.values()
@@ -124,13 +163,22 @@ class eMPTCPConnection:
     def length(self):
         return len(self.subflows) 
 
-    def take_action(self):
-        for subflow in self.subflows.values():
-            try:
-                subflow.take_action()
-            except Exception as e: 
-                print(e)
-
+    def push_add_addr_opt(self, rm_add_addr_e):
+        if rm_add_addr_e.opt_len == 16: 
+            self.add_addr_opt_list.append(bytes(rm_add_addr_e.add_addr_opt[2:-2]))
+            #with port 
+        elif rm_add_addr_e.opt_len == 18:
+            self.add_addr_opt_list.append(bytes(rm_add_addr_e.add_addr_opt[2:]))
+        elif rm_add_addr_e.opt_len == 8:
+            self.add_addr_opt_list.append(bytes(rm_add_addr_e.add_addr_opt[2:8]))
+        else: 
+            raise RuntimeError("add addr len %d error :%d"%rm_add_addr_e.opt_len)
+        
+    def pop_add_addr_opt(self):
+        if len(self.add_addr_opt_list) == 0:
+            return None 
+        else:
+            return self.add_addr_opt_list.pop(0)
 ## Policy
 class SchedulerPolixy: 
     def __init__(self):
@@ -158,7 +206,9 @@ class TestPolicy(SchedulerPolixy):
         actions = []
         for info in emptcp_connection.infos():
             if info.action.recv_win_ingress == None:
-                actions.append((info.flow, eMPTCPConnection.Action(65535)))
+                action =  eMPTCPConnection.Action()
+                action.recv_win_ingress = 65535
+                actions.append((info.flow, action))
         return 50, emptcp_connection.remote_token, actions
 
 def print_tcp4_flow(flow):
@@ -167,27 +217,37 @@ def print_tcp4_flow(flow):
     print("remote_ip %s"%int2ip(int.from_bytes(val_2_bytes(flow.remote_addr, 4), byteorder = "big", signed = False)))
     print("remote_port %s"%int.from_bytes(val_2_bytes(flow.remote_port, 2), byteorder = "big", signed = False))
 
+event_map = {
+    MP_CAPABLE_EVENT : mp_capable_event_t,
+    MP_JOIN_EVENT : mp_join_event_t,
+    FIN_EVENT : fin_event_t,
+    MP_RM_ADD_ADDR : rm_add_addr_event_t,
+    RECOVER_ADD_ADDR_EVENT : mptcp_copy_pkt_event_t,
+    MP_PRIO_BACKUP_EVENT : mptcp_copy_pkt_event_t,
+}
+
 def eMPTCP_event_process_func(q, running):
-        def store_eMPTCP_events(queue, ctx, cpu,  data, size):
-            if size < ct.sizeof(eMPTCP_event_header_t):
-                return 
-            e = ct.cast(data, ct.POINTER(eMPTCP_event_header_t)).contents
-            event = e.event 
-            if event == 1:
-                queue.put(ct.cast(data, ct.POINTER(mp_capable_event_t)).contents)
-            elif event == 2:
-                queue.put(ct.cast(data, ct.POINTER(mp_join_event_t)).contents)
-            elif event == 3:
-                queue.put(ct.cast(data, ct.POINTER(fin_event_t)).contents)
-            else:
-                raise RuntimeError("unkonwn event :%d"%event)
-        eMPTCP_events_fd = bpf_obj_get(TC_EGRESS_EMPTCP_EVENTS_PATH)
-        with PerfBuffer(eMPTCP_events_fd, partial(store_eMPTCP_events, q)) as pb:
-            while running.value:
-                try:
-                    pb.poll(timeout_ms = 10)
-                except KeyboardInterrupt:
-                    break
+    def store_eMPTCP_events(queue, ctx, cpu,  data, size):
+        if size < ct.sizeof(eMPTCP_event_header_t):
+            return 
+        e = ct.cast(data, ct.POINTER(eMPTCP_event_header_t)).contents
+        event = e.event 
+        event_t = event_map.get(event, None)
+        if event_t == None :
+            raise RuntimeError("unkonwn event :%d"%event)
+        queue.put(ct.cast(data, ct.POINTER(event_t)).contents)
+
+    tc_eMPTCP_events_fd = bpf_obj_get(TC_EGRESS_EMPTCP_EVENTS_PATH)
+    xdp_eMPTCP_events_fd = bpf_obj_get(XDP_EMPTCP_EVENTS_PATH)
+    with PerfBuffer(tc_eMPTCP_events_fd, partial(store_eMPTCP_events, q)) as tpb, PerfBuffer(xdp_eMPTCP_events_fd, partial(store_eMPTCP_events, q)) as xpb:
+        while running.value:
+            try:
+                tpb.poll(timeout_ms = 10)
+                xpb.poll(timeout_ms = 10)
+            except KeyboardInterrupt:
+                break
+
+pkt_list = []
 
 class eMPTCPScheduler:
     def __init__(self, policy, *, init_interval = 0 , parallel_ths = 100, parallel_level = cpu_count()):
@@ -203,6 +263,15 @@ class eMPTCPScheduler:
         self.parallel_ths = parallel_ths
         self.loom = ProcessLoom(max_runner_cap=parallel_level)
         self.scheduler_heapq = []     #(token, time)
+        self.un_sock = None
+        self.event_func_map = {
+            MP_CAPABLE_EVENT : self._process_mpc_event,
+            MP_JOIN_EVENT : self._process_mpj_event,
+            FIN_EVENT : self._process_fin_event,
+            MP_RM_ADD_ADDR : self._process_rm_add_addr_event,
+            RECOVER_ADD_ADDR_EVENT : self._process_recover_add_addr_event,
+            MP_PRIO_BACKUP_EVENT : self._porcess_mp_prio_backup_event
+        }
 
     def start(self):
         self.running.value = True
@@ -213,35 +282,32 @@ class eMPTCPScheduler:
     def _run(self):
         #consumer
         while True :
-            now = round(time.time()*1000)
+            now = time.time()*1000
             try:
                 #schedule one connection 
-                e = self.eMPTCP_events_q.get(True, timeout = 0.01)
                 try:
-                    event = e.header.event 
-                    if event == 1:
-                        self._process_mpc_event(e, now)
-                    elif event == 2:
-                        self._process_mpj_event(e, now)
-                    elif event == 3:
-                        self._process_fin_event(e)
-                    else:
-                        raise RuntimeError("unkonwn event :%d"%event)
-                except Exception as e: 
-                    print(e)
+                    e = self.eMPTCP_events_q.get(True, timeout = 0.01)
+                    try:
+                        event = e.header.event 
+                        event_func = self.event_func_map.get(event, None)
+                        if event_func == None: 
+                            raise RuntimeError("unkonwn event :%d"%event)
+                        event_func(e, now_ms = now)
+                    except Exception as e: 
+                        print(e)
+                except queue.Empty:
+                    pass 
                 try:
                     connections = self._get_available_connections(now)
                     self._schedule(connections)
                 except Exception as e:
                     print(e)
-            except queue.Empty:
-                pass 
             except KeyboardInterrupt:
                 self.running.value = False 
                 while not self.eMPTCP_events_q.empty():
                     _ = self.eMPTCP_events_q.get(True, timeout = 0.01)
                 self.eMPTCP_event_process.join()
-                exit() 
+                break
                 
     def _get_available_connections(self, now):
         connections = []
@@ -294,12 +360,27 @@ class eMPTCPScheduler:
         return next_l, actions
     
     def _take_policies(self, actions):
+        def recover_flow(flow, a): 
+            _, tcpf = self.tcpflows.get(flow, (None, None))
+            if tcpf == None: 
+                raise RuntimeError("recover subflow tcp flow not exists!")
+            back_pkt = tcpf.pop_backup_pkt()
+            if back_pkt != None:
+                pkt = SetFlowPrio.build_packet(back_pkt)
+                self.un_sock.send(raw(pkt))
+                print("send copy pkt")
+                a.backup = False 
+                a.recover_flow = False 
+
         def batch_func(acs):
             for f, a in acs:
                 try:
-                    SubflowInfo.take_action(a, f)
+                    SubflowInfo.take_action(a, f)    #modify BPF MAP 
                 except Exception as e:
                     print(e)
+                if a.recover_flow: 
+                    recover_flow(f, a)
+
         if (len(actions) < self.parallel_ths):
             batch_func(actions)
             return  
@@ -338,7 +419,7 @@ class eMPTCPScheduler:
         except Exception as e: 
             print(e)
 
-    def _process_mpc_event(self, mpce, t):
+    def _process_mpc_event(self, mpce, *, now_ms, **kw):
         tcpf = self._get_tcpflow(mpce.flow)
         if not self._check_black_list(tcpf):
             return 
@@ -357,13 +438,14 @@ class eMPTCPScheduler:
             print_tcp4_flow(mpce.flow)
             raise RuntimeError("tcp flow exists!")
         c = eMPTCPConnection(local_token = lt, remote_token = rt)
-        s = c.add(tcpf)
+        s = c.add(tcpf, start_us = round(now_ms * 1000))
+        c.main_flow = s
         self.remote_token_mpc_dict[rt] = c 
         self.local_token_mpc_dict[lt] = c 
         self.tcpflows[tcpf] = (c, s)
-        heapq.heappush(self.scheduler_heapq, (t + self.init_interval, c))
+        heapq.heappush(self.scheduler_heapq, (round(now_ms) + self.init_interval, c))
 
-    def _process_mpj_event(self, mpje, t):
+    def _process_mpj_event(self, mpje, *, now_ms, **kw):
         tcpf = self._get_tcpflow(mpje.flow)
         if not self._check_black_list(tcpf):
             return 
@@ -373,11 +455,11 @@ class eMPTCPScheduler:
             print_tcp4_flow(mpje.flow)
             raise RuntimeError("tcp flow exists!", tcpf)
         c = self.remote_token_mpc_dict[rt]
-        s = c.add(tcpf)
+        s = c.add(tcpf, start_us = round(now_ms * 1000))
         self.tcpflows[tcpf] = (c, s)
-        heapq.heappush(self.scheduler_heapq, (t + self.init_interval, c))
+        heapq.heappush(self.scheduler_heapq, (round(now_ms) + self.init_interval, c))
 
-    def _process_fin_event(self, fine):
+    def _process_fin_event(self, fine, **kw):
         tcpf = self._get_tcpflow(fine.flow) 
         c,_ = self.tcpflows.get(tcpf, (None, None))
         if c == None: 
@@ -388,7 +470,49 @@ class eMPTCPScheduler:
             lt = c.local_token
             self.remote_token_mpc_dict.pop(rt)
             self.local_token_mpc_dict.pop(lt)
-  
+    
+    def _process_rm_add_addr_event(self, rm_add_addr_e, **kw):
+        print("process _process_rm_add_addr_event")
+
+        tcpf = self._get_tcpflow(rm_add_addr_e.flow) 
+        c, _ = self.tcpflows.get(tcpf, (None, None))
+        if c == None: 
+            print_tcp4_flow(tcpf)
+            raise RuntimeError("tcp flow not exists!")
+        c.push_add_addr_opt(rm_add_addr_e)
+
+    def _process_recover_add_addr_event(self, recover_add_addr_e, **kw):
+        print("process _process_recover_add_addr_event")
+        # 1.get add addr opt
+        # 2.build packet using add_addr opt and recover_add_addr_e 
+        # 3.send built packet to emptcpd using UNIX sock
+        tcpf = self._get_tcpflow(recover_add_addr_e.flow) 
+        c, f = self.tcpflows.get(tcpf, (None, None))
+        if c == None: 
+            raise RuntimeError("tcp flow not exists!")
+        add_addr_opt_bytes = c.pop_add_addr_opt()
+        if add_addr_opt_bytes != None:
+            pkt = RecoverAddAddr.build_packet(add_addr_opt_bytes, recover_add_addr_e)
+            pkt_bytes = raw(pkt)
+            self.un_sock.send(pkt_bytes)
+            #global pkt_list 
+            #pkt_list.append(pkt)
+            return 
+        # no more add addr 
+        if f.action.recover_add_addr != None and f.action.recover_add_addr == True: 
+            f.action.recover_add_addr = False
+
+        SubflowInfo.take_action(f.action, f.flow)
+
+    def _porcess_mp_prio_backup_event(self, mp_prio_b_e, **kw):
+        print("process _porcess_mp_prio_backup_event")
+        #store the packet 
+        tcpf = self._get_tcpflow(mp_prio_b_e.flow) 
+        _, f = self.tcpflows.get(tcpf, (None, None))
+        if f == None: 
+            raise RuntimeError("tcp flow not exists!")
+        f.push_backup_pkt(mp_prio_b_e)
+
     def _get_tcpflow(self, tcp4):
         #tcp4tuple (local_port, remote_port, local_addr, remote_addr)
         flow = (tcp4.local_port, tcp4.remote_port, tcp4.local_addr, tcp4.remote_addr)
@@ -407,8 +531,77 @@ class eMPTCPScheduler:
             return False 
         return True
 
+# Policies 
+class AddAddrPolicy(SchedulerPolixy): 
+    def __init__(self, recover_time_ms):
+        super().__init__()
+        self.recover_time_ms = recover_time_ms
+        pass 
+
+    def make(self, emptcp_connection):
+        assert(isinstance(emptcp_connection, eMPTCPConnection))
+        actions = []
+        now = round(time.time()*1000)
+        a = eMPTCPConnection.Action()
+        interval = 1000
+        if now - emptcp_connection.main_flow.start_us // 1000 < self.recover_time_ms:
+            #after 10 milliseconds 
+            a.rm_add_addr = True 
+            a.recover_add_addr = False 
+            interval = self.recover_time_ms - (now - emptcp_connection.main_flow.start_us // 1000)
+        else: 
+            a.rm_add_addr = False
+            if len(emptcp_connection.add_addr_opt_list) > 0:
+                a.recover_add_addr = True 
+            else:
+                a.recover_add_addr = False
+        actions.append((emptcp_connection.main_flow.flow, a))
+        return interval, emptcp_connection.remote_token, actions
+
+# Policies 
+class SubflowPolicy(SchedulerPolixy): 
+    def __init__(self, recover_flow_time_ms):
+        super().__init__()
+        self.recover_flow_time_ms = recover_flow_time_ms
+        #  flow = (tcp4.local_port, tcp4.remote_port, tcp4.local_addr, tcp4.remote_addr)
+        self.subflow_backup_list = [(sk.htonl(ip2int("172.16.12.129")),sk.htonl(ip2int("172.16.12.131"))), \
+            (sk.htonl(ip2int("172.16.12.129")),sk.htonl(ip2int("172.16.12.132")))]  #local remot
+
+    def make(self, emptcp_connection):
+        assert(isinstance(emptcp_connection, eMPTCPConnection))
+        actions = []
+        now = round(time.time()*1000)
+        a = eMPTCPConnection.Action()
+
+        #interval = self.recover_flow_time_ms - (now - emptcp_connection.main_flow.start_us // 1000)
+        interval = 20
+        for info in emptcp_connection.infos():
+            if (info.flow[2], info.flow[3]) not in  self.subflow_backup_list : 
+                continue
+            a = eMPTCPConnection.Action()
+            #print(now - emptcp_connection.main_flow.start_us // 1000)
+            if (now - emptcp_connection.main_flow.start_us // 1000) < self.recover_flow_time_ms :
+                #set back up  
+                print("set backup")
+                a.backup = True 
+                actions.append((info.flow, a))
+            else: 
+                #print("set recover")
+                if info.action.backup == True :
+                    print("recover")
+                    a.backup = False 
+                    a.recover_flow = True 
+                    actions.append((info.flow, a))
+        return interval, emptcp_connection.remote_token, actions
+    
+
 if __name__ == '__main__':
     setup_tc()
     SubflowInfo.setup()
-    s = eMPTCPScheduler(TestPolicy())
+    s = eMPTCPScheduler(SubflowPolicy(50))
+    s.un_sock = setup_unsock()
     s.start()
+    s.un_sock.close()
+
+    for pkt in pkt_list:
+        pkt.show2()
