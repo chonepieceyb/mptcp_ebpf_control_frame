@@ -1,6 +1,8 @@
 
 #-*- coding:utf-8 -*-
 
+import sys
+sys.path.append("../src/py/emptcp")
 from libbpf import * 
 from bpf_map_def import * 
 from policy_chain import * 

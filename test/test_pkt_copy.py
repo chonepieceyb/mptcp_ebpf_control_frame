@@ -1,3 +1,5 @@
+
+sys.path.append("../src/py/emptcp")
 from libbpf import * 
 from scapy.all import Ether, IP, raw, TCP, hexdump
 from data_struct_def import * 

@@ -1,5 +1,6 @@
 #-*- coding:utf-8 -*-
-
+import sys
+sys.path.append("../src/py/emptcp")
 from policy_chain import *
 
 #local = ["223.3.71.76", "223.3.91.39", "223.3.78.49"]

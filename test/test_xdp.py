@@ -1,5 +1,7 @@
 #-*- coding:utf-8 -*-
 
+import sys
+sys.path.append("../src/py/emptcp")
 from scapy.all import Ether, IP, raw, TCP, hexdump
 from bcc import BPF, libbcc
 import unittest

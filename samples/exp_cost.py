@@ -1,4 +1,5 @@
-from libbpf import * 
+import sys
+sys.path.append("../src/py/emptcp")
 import ctypes as ct
 from config import CONFIG 
 import os

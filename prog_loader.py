@@ -1,13 +1,14 @@
 #-*- coding:utf-8 -*-
-from re import U
 from bcc import BPF
 import argparse
-import os
+import sys
+
+sys.path.append("./src/py/emptcp")
 
 from common import *
+from libbpf import *
 from bpf_loader import *
 from utils import *
-from libbpf import *
 from bpf_map_def import *
 from socket import if_nametoindex
 

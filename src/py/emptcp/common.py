@@ -3,7 +3,7 @@ import os
 
 #path
 SRC_PY_PATH = os.path.abspath(os.path.dirname(__file__))
-SRC_PATH = os.path.dirname(SRC_PY_PATH)
+SRC_PATH = os.path.dirname(os.path.dirname(SRC_PY_PATH))
 SRC_BPF_KERN_PATH = os.path.join(SRC_PATH, "bpf_kern")
 PROJECT_ROOT_PATH = os.path.dirname(SRC_PATH)
 CONFIG_PATH = os.path.join(PROJECT_ROOT_PATH, "config")
