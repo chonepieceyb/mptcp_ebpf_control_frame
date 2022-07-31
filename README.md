@@ -6,7 +6,7 @@ eMPTCP is a framework that extends MPTCP developed based on eBPF.  eMPTCP has th
 * **Adding new functionalities.** eMPTCP supports a wide range of MPTCP operations, including controllable path establishment, traffic scheduling, etc. By allowing inspection and manipulation of network packets, eMPTCP can utilize the views from different layers of network protocols, yielding unique insights and exerting control beyond the end hosts.
 * **Higher pace of development.** With intent-based abstrac- tions and security-verified helper functions provided by eMPTCP, network operators can focus on the essential policy development without worrying about the details and security issues of the MPTCP kernel. 
 
-![image-20220731104358638](/Users/ybchonepiece/Library/Application Support/typora-user-images/image-20220731104358638.png)
+![](./Resources/architecture.png)
 
 ​																	    Fig.  Architecture of eMPTCP
 
