@@ -14,6 +14,14 @@ fro more details, please read our paper.
 
 ## Install
 
+**MPTCP requirement**
+
+[MPTCP 0.95](https://github.com/multipath-tcp/mptcp.git)
+
+or 
+
+MPTCP V1 with linux kernel >=5.10
+
 **requirement** 
 
 * clang 10.0.0
