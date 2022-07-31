@@ -19,6 +19,8 @@
 #define SUBMIT_EVENT_FAIL               1015
 #define CHECK_MPTCP_OPTS_FAIL           1016
 #define TC_GROW_TCP_HEADER_FAIL         1017
+#define PRE_COPY_PKT_FAIL               1018
+#define UPDATE_METRIC_FAIL              1019
 #define NOT_TARGET                      1
 
 #endif

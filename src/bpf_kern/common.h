@@ -103,6 +103,19 @@ struct tcp_flags {
 #endif	
 };
 
+struct tcp_option {
+    __u8 kind;
+    __u8 len;
+};
+
+struct tcp_timestamp_opt {
+    __u8 kind;
+    __u8 len;
+    __be32 ts;
+    __be32 ts_echo;
+} __attribute__((__packed__));
+
+
 struct mptcp_option {
 	__u8	kind;
 	__u8	len;
@@ -350,6 +363,8 @@ typedef __u64 action_chain_id_t;
 #define MAX_XDP_ACTION_CHAIN_NUM 200000
 #define XDP_ACTION_CHAINS_PATH "/sys/fs/bpf/eMPTCP/xdp_action_chains"
 
+#define MAX_XDP_EMPTCP_EVENTS_SIZE 128
+
 #define MAX_POLICY_LEN 4
 
 //TC Egress
@@ -456,6 +471,33 @@ struct default_action_t {
     action_chain_id_t id;
     int enable;
 };
+
+struct mptcp_copy_pkt_event_t {
+    eMPTCP_event_header_t header;
+    struct tcp4tuple flow;
+    struct ethhdr eth;
+    __be16 window;
+    __be32 seq;
+    __be32 ack_seq;
+    struct mp_dss dss_opt;
+    char dss_ack[8];
+};
+typedef struct mptcp_copy_pkt_event_t mptcp_copy_pkt_event;
+
+#define TCP_METRIC_MAX_RTT_SHIFT 3
+#define TCP_METRIC_MAX_RTT_LEN (1 << TCP_METRIC_MAX_RTT_SHIFT)
+#define TCP_METRIC_MAX_RTT_MASK ((TCP_METRIC_MAX_RTT_LEN) - 1)
+
+struct tcp_metrics_t {
+    __u32 ingress_pkts;
+    __u32 egress_pkts;
+    __u64 ingress_flow_size; 
+    __u64 egress_flow_size; 
+    __u32 rtt_producer;
+    __u32 rtts[TCP_METRIC_MAX_RTT_LEN];   
+};
+
+typedef struct tcp_metrics_t tcp_metrics;
 
 #ifdef DEBUG
 

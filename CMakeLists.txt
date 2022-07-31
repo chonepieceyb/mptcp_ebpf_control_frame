@@ -7,6 +7,8 @@ set(CMAKE_INSTALL_PREFIX "${PROJECT_SOURCE_DIR}/install")
 #some custom vars 
 set(BPF_KERN_SRC_FILES "${PROJECT_SOURCE_DIR}/src/bpf_kern")
 set(BPF_KERN_TARGETS "${CMAKE_INSTALL_PREFIX}/bpf_kern_objs")
+set(BIN_TARGETS "${PROJECT_SOURCE_DIR}/bin")
+set(CC_FILES "${PROJECT_SOURCE_DIR}/src/cc")
 
 #add_definitions(-DNOBCC)
 
@@ -23,4 +25,5 @@ endif (DEBUG)
 add_subdirectory("${BPF_KERN_SRC_FILES}/tc_egress")
 #add_subdirectory("${BPF_KERN_SRC_FILES}/tc_btf")
 add_subdirectory("${BPF_KERN_SRC_FILES}/xdp")
+add_subdirectory("${CC_FILES}")
 

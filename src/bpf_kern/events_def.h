@@ -4,5 +4,8 @@
 #define MP_CAPABLE_EVENT 1
 #define MP_JOIN_EVENT 2
 #define FIN_EVENT 3
+#define MP_PRIO_BACKUP_EVENT 4
+#define MP_RM_ADD_ADDR 5
+#define RECOVER_ADD_ADDR_EVENT 6
 
 #endif 

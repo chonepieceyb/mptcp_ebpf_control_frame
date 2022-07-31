@@ -7,6 +7,7 @@
 #include <linux/tcp.h>
 #include "common.h"
 #include "error.h"
+#include "events_def.h"
 
 
 #define SWAP(type, lhp, rhp){\
@@ -32,6 +33,21 @@
         goto out_of_bound;\
     }\
 }\
+
+#define SCAN_TCP_OPT(pos, de, k){\
+    struct tcp_option *opt = (pos);\
+    CHECK_BOUND(opt, (de));\
+    if (opt->kind == k){\
+        goto found;\
+    }\
+    if (opt->kind == 0 || opt->kind == 1) {\
+        pos += 1;\
+    }\
+    else {\
+        pos += opt->len;\
+    }\
+}\
+
 
 //pos should be type void*, find spefic mptcp opt 
 #define SCAN_MPTCP_OPT_SUB(pos, de, sub){\
@@ -279,6 +295,38 @@ static __always_inline int is_tcp_packet(struct hdr_cursor *nh, void *data_end, 
     return parse_tcphdr(nh, data_end, tcph); //返回tcp头部的长度
 }
 
+static __always_inline int check_tcp_opt(struct hdr_cursor *nh, void *data_end, int tcp_opt_len, int kind) {
+/*
+ * param: 
+ *      nh : cursor 
+ *      data_end : packet data_end 
+ *      tcp_opt_len : tcp opt length parse from tcp header 
+ *      sub : tcp option kind 
+ * return: 
+ *      0 : success , nh move to the address opt found 
+ *      -1 : bpf bound check failed, nh keep no change
+ *      -2 : mptcp options not exists, nh keep no change 
+ */
+    void *start = nh->pos;
+
+    void *pos = start;
+    #pragma unroll 40
+    for (int index = 0; index < 40; index++) {
+        int curr_idx = pos - start;
+        if (curr_idx >= tcp_opt_len) goto not_exists;
+        if (curr_idx == index) SCAN_TCP_OPT(pos, data_end, kind);
+    }
+found:
+    //found mptcp option
+    nh->pos = pos;
+    return 0;
+
+out_of_bound:
+    return -1;
+
+not_exists:
+    return -2; 
+}
 
 static __always_inline int check_mptcp_opt(struct hdr_cursor *nh, void *data_end, int tcp_opt_len, int sub) {
 
@@ -309,12 +357,9 @@ found:
     return 0;
 
 out_of_bound:
-
-
     return -1;
 
 not_exists:
-
     return -2; 
 }
 
@@ -993,6 +1038,49 @@ static __always_inline int xdp_clear_policy_chain(struct xdp_md *ctx, __u8 next_
     return 0;
 fail:
     return -XDP_CLEAR_SELECTOR_CHAIN_FAIL;
+}
+
+static __always_inline void pre_copy_tcp_pkt(void *data_end, const struct ethhdr *eth, const struct iphdr *iph, const struct tcphdr *tcph, mptcp_copy_pkt_event *e) {
+    e->header.time_ns = bpf_ktime_get_ns();
+    e->header.len = sizeof(e);
+    
+    get_tcp4tuple_in(iph, tcph, &e->flow);
+    __builtin_memcpy(&e->eth, eth, sizeof(struct ethhdr));
+    e->window = tcph->window;
+    e->seq = tcph->seq;
+    e->ack_seq = tcph->ack_seq; 
+}
+
+static __always_inline int pre_copy_mptcp_pkt(void *data_end, const struct ethhdr *eth, const struct iphdr *iph, const struct tcphdr *tcph, const struct mp_dss *dss, mptcp_copy_pkt_event *e) {
+
+    pre_copy_tcp_pkt(data_end, eth, iph, tcph, e);
+    __builtin_memcpy(&e->dss_opt, dss, sizeof(struct mp_dss));
+    void *dss_ack = (void*)(dss + 1);
+    if (dss->a) {
+        //8bytes 
+        CHECK_BOUND_BY_SIZE(dss_ack, data_end, 8);
+        __builtin_memcpy(&e->dss_ack, dss_ack, 8);
+    } else {
+        //4 bytes
+        CHECK_BOUND_BY_SIZE(dss_ack, data_end, 4);
+        __builtin_memcpy(&e->dss_ack, dss_ack, 4);
+    }
+    return 0;
+
+out_of_bound:
+    return -1; //should not happen 
+}
+
+static __always_inline void record_pkt(__u32 *pkt) {
+    *pkt += 1;
+}
+
+static __always_inline void record_flow_size(__u64 *flow_size, const struct iphdr *iph, const struct tcphdr *tcph) {
+    __u64 data_len = (__u64)(iph->tot_len - (iph->ihl << 2) - (tcph->doff << 2));
+}
+
+static __always_inline void record_rtt(__u32* rtt_array, __u32* producer,  const struct tcp_timestamp_opt *opt) {
+    *(rtt_array + (((*producer)++) & TCP_METRIC_MAX_RTT_MASK)) = (__u32)bpf_ktime_get_ns() - opt->ts_echo;
 }
 
 typedef unsigned long long u64;
