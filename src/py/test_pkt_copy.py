@@ -1,6 +1,3 @@
-
-import sys
-sys.path.append("../src/py/emptcp")
 from libbpf import * 
 from scapy.all import Ether, IP, raw, TCP, hexdump
 from data_struct_def import * 
@@ -73,8 +70,6 @@ def process_eMPTCP_events(ctx, cpu,  data, size):
         process_recover_flow_event(data)
     else:
         raise RuntimeError("unkonwn event :%d"%event)
-
-
 
 
 if __name__ == '__main__':
