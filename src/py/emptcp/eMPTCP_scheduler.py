@@ -86,8 +86,12 @@ class SubflowInfo:
         if action.backup != None and action.backup == True:
             ac.add("set_flow_prio", backup = 1, addr_id = None)
 
-        policy_chain = XDPPolicyChain(cls.xdp_selector_chain, ac)
-        policy_chain.set(0, tcp4 = flow)
+        if ac.len() > 0:
+            policy_chain = XDPPolicyChain(cls.xdp_selector_chain, ac)
+            policy_chain.set(0, tcp4 = flow)
+        else: 
+            policy_chain = XDPPolicyChain(cls.xdp_selector_chain)
+            policy_chain.delete(0, tcp4 = flow)
 
     @classmethod
     def delete_action(cls, flow):
@@ -522,13 +526,17 @@ class eMPTCPScheduler:
         remote_addr = flow[3]
         local_addr = flow[2]
         
-        local_list = [bytes_2_val(inet_aton("172.16.12.128")),bytes_2_val(inet_aton("172.16.12.129")), bytes_2_val(inet_aton("172.16.12.130"))]
-        remote_list = [ bytes_2_val(inet_aton("172.16.12.131")),bytes_2_val(inet_aton("172.16.12.132")), bytes_2_val(inet_aton("172.16.12.133"))]
+        local_list = [bytes_2_val(inet_aton("172.16.12.128")),bytes_2_val(inet_aton("192.168.232.127"))]
+        remote_list = [ bytes_2_val(inet_aton("172.16.12.131")),bytes_2_val(inet_aton("192.168.232.129"))]
         #print("local: %s"int2ip(int.from_bytes(val_2_bytes(flow.local_addr, 4), byteorder = "big", signed = False)))
         if local_addr not in local_list:
             return False 
         if remote_addr not in remote_list:
             return False 
+
+        if local_addr == 2145953984 and remote_addr == 2198605996:
+            return False
+
         return True
 
 # Policies 
@@ -596,12 +604,21 @@ class SubflowPolicy(SchedulerPolixy):
     
 
 if __name__ == '__main__':
+    '''
+        setup_tc()
+        SubflowInfo.setup()
+        s = eMPTCPScheduler(SubflowPolicy(50))
+        s.un_sock = setup_unsock()
+        s.start()
+        s.un_sock.close()
+
+        for pkt in pkt_list:
+            pkt.show2()
+    '''
+    '''
+    setup_tc()
     setup_tc()
     SubflowInfo.setup()
-    s = eMPTCPScheduler(SubflowPolicy(50))
-    s.un_sock = setup_unsock()
+    s = eMPTCPScheduler(TestSs())
     s.start()
-    s.un_sock.close()
-
-    for pkt in pkt_list:
-        pkt.show2()
+    '''

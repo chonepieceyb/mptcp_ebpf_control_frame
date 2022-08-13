@@ -2,8 +2,10 @@
 from bcc import BPF
 import argparse
 import sys
+import os
 
-sys.path.append("./src/py/emptcp")
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(PROJECT_DIR,"src/py/emptcp"))
 
 from common import *
 from libbpf import *

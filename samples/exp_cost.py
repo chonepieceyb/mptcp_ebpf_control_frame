@@ -1,7 +1,8 @@
-import sys
-sys.path.append("../src/py/emptcp")
+import os 
+import sys 
+PROJECT_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(PROJECT_PATH,"./src/py/emptcp"))
 import ctypes as ct
-from config import CONFIG 
 import os
 from bpf_loader import *
 from bpf_map_def import *
