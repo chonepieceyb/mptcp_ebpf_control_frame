@@ -106,7 +106,8 @@ class SubflowInfo:
         self.backup_pkt = None 
 
     def push_backup_pkt(self, e):
-        self.backup_pkt = e
+        if self.backup_pkt == None or self.backup_pkt.ack_seq < e.ack_seq:
+            self.backup_pkt = e
     
     def pop_backup_pkt(self):
         pkt = self.backup_pkt
@@ -486,7 +487,6 @@ class eMPTCPScheduler:
         c.push_add_addr_opt(rm_add_addr_e)
 
     def _process_recover_add_addr_event(self, recover_add_addr_e, **kw):
-        print("process _process_recover_add_addr_event")
         # 1.get add addr opt
         # 2.build packet using add_addr opt and recover_add_addr_e 
         # 3.send built packet to emptcpd using UNIX sock
@@ -509,7 +509,6 @@ class eMPTCPScheduler:
         SubflowInfo.take_action(f.action, f.flow)
 
     def _porcess_mp_prio_backup_event(self, mp_prio_b_e, **kw):
-        print("process _porcess_mp_prio_backup_event")
         #store the packet 
         tcpf = self._get_tcpflow(mp_prio_b_e.flow) 
         _, f = self.tcpflows.get(tcpf, (None, None))
@@ -526,8 +525,8 @@ class eMPTCPScheduler:
         remote_addr = flow[3]
         local_addr = flow[2]
         
-        local_list = [bytes_2_val(inet_aton("172.16.12.128")),bytes_2_val(inet_aton("192.168.232.127"))]
-        remote_list = [ bytes_2_val(inet_aton("172.16.12.131")),bytes_2_val(inet_aton("192.168.232.129"))]
+        local_list = [bytes_2_val(inet_aton("172.16.12.128")),bytes_2_val(inet_aton("172.16.12.129"))]
+        remote_list = [ bytes_2_val(inet_aton("172.16.12.131")),bytes_2_val(inet_aton("172.16.12.132"))]
         #print("local: %s"int2ip(int.from_bytes(val_2_bytes(flow.local_addr, 4), byteorder = "big", signed = False)))
         if local_addr not in local_list:
             return False 

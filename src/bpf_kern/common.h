@@ -513,6 +513,8 @@ typedef struct tcp_metrics_t tcp_metrics;
 #define TCPSEL 7
 #define SEL_ENTRY 8 
 #define ACTION_ENTRY 9
+#define COPY_PKT 10 
+#define RECORD 11
 
 struct debug_time_event_t {
     int event;

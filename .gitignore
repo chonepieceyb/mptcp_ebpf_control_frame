@@ -4,7 +4,9 @@ bin
 tags
 config/if_attach_list.config
 */__pycache__
-src/py/__pycache__
+src/py/emptcp/__pycache__
+samples/__pycache__
+__pycache__
 .vscode
 
 

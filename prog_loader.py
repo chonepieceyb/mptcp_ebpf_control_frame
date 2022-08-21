@@ -175,6 +175,6 @@ class ProgLoader:
 #testing 
 if __name__ == '__main__' : 
     import sys
-    #xdp_set_debug()
+    xdp_set_debug()
     tool = ProgLoader(sys.argv[1:])
     tool.run()
