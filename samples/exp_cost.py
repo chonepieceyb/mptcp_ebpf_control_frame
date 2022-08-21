@@ -1,5 +1,6 @@
 import os 
-import sys 
+import sys
+
 PROJECT_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(PROJECT_PATH,"./src/py/emptcp"))
 import ctypes as ct

@@ -65,7 +65,7 @@ class ECNPolicy(SchedulerPolixy):
         print("fast_flow: %s"%self._strmetric(fast_flow))
         print("slow_flow: %s"%self._strmetric(slow_flow))
         print("normal: %d, wait_fast: %d, slow: %d"%(normal,wait_fast,slow))
-        interal, actions = self._ECN_like_policy(k_segment+500, fast_flow, slow_flow)
+        interal, actions = self._ECN_like_policy(k_segment, fast_flow, slow_flow)
         
         return interal, emptcp_connection.remote_token, actions
 
@@ -114,41 +114,65 @@ class ECNPolicy(SchedulerPolixy):
     def _strmetric(self, f):
         return "rtt: %f, cwnd: %d, unacked: %d"%(f.rtt, f.cwnd, f.unacked)
 
+    def __normal_sub(self, fast_f, slow_f): 
+        global normal 
+        normal += 1
+        slow_action = eMPTCPConnection.Action()
+        slow_action.backup = False 
+        slow_action.recover_flow = True 
+        print("__normal") 
+        return 1000 ,[(slow_f.flow, slow_action)]
+    
+
+    def __wait_fast_sub(self, fast_f, slow_f): 
+        global wait_fast 
+        wait_fast += 1
+        slow_action = eMPTCPConnection.Action()
+        slow_action.backup = True
+        slow_action.recover_flow = False
+        print("__wait fast subflow") 
+        return 1000, [(slow_f.flow, slow_action)]
+
+    def __use_slow_sub(self, fast_f, slow_f): 
+        global slow
+        slow += 1
+        slow_action = eMPTCPConnection.Action()
+        slow_action.backup = False 
+        slow_action.recover_flow = True 
+        print("__use slow subflow") 
+        return 1000 , [(slow_f.flow, slow_action)]
+
     def _normal_sub(self, fast_f, slow_f): 
         global normal 
         normal += 1
         fast_action = eMPTCPConnection.Action()
         slow_action = eMPTCPConnection.Action()
-        fast_action.recv_win_ingress = 30000
-        slow_action.recv_win_ingress = int(1 * slow_f.cwnd * 1460 //128)
-        #slow_action.recv_win_ingress = 100
+        fast_action.recv_win_ingress = 40000
+        slow_action.recv_win_ingress = 40000
         print("normal") 
-        return 100 ,[(slow_f.flow, slow_action)]
-        #return 200, [(fast_f.flow, fast_action), (slow_f.flow, slow_action)]
-
+        return 200 ,[(slow_f.flow, slow_action)]
+    
     def _wait_fast_sub(self, fast_f, slow_f): 
         global wait_fast 
         wait_fast += 1
         fast_action = eMPTCPConnection.Action()
         slow_action = eMPTCPConnection.Action()
-        fast_action.recv_win_ingress = 30000
+        fast_action.recv_win_ingress = 40000
         slow_action.recv_win_ingress = int(1 * slow_f.cwnd * 1460 //128)
         #slow_action.recv_win_ingress = 100
         print("wait fast subflow") 
         #return 100 ,[]
-        return 100, [(slow_f.flow, slow_action)]
+        return 300, [(slow_f.flow, slow_action)]
 
     def _use_slow_sub(self, fast_f, slow_f): 
         global slow
         slow += 1
         fast_action = eMPTCPConnection.Action()
         slow_action = eMPTCPConnection.Action()
-        #fast_action.recv_win_ingress = int(2 * fast_f.cwnd * 1460 //128)
-        #slow_action.recv_win_ingress = int(3 * slow_f.cwnd * 1460 //128)
-        slow_action.recv_win_ingress = 30000
+        fast_action.recv_win_ingress = int(2 * fast_f.cwnd * 1460 //128)
+        slow_action.recv_win_ingresss = 40000
         print("use slow subflow") 
-        return 100 , []
-        #return 200, [(slow_f.flow, slow_action)]
+        return 200 , [(slow_f.flow, slow_action)]
 
 
     def _fail(self, emptcp_connection, info = ""): 
@@ -158,9 +182,8 @@ class ECNPolicy(SchedulerPolixy):
 if __name__ == '__main__':
     setup_tc()
     SubflowInfo.setup()
-    s = eMPTCPScheduler(ECNPolicy(), init_interval = 100)
+    s = eMPTCPScheduler(ECNPolicy(), init_interval = 500)
     s.start()
-
 
 '''
 class TestSs(SchedulerPolixy):
