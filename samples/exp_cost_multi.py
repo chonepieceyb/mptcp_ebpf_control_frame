@@ -13,7 +13,7 @@ peer =  ["172.16.12.131", "172.16.12.132"]
 
 def test_tcp2_selector(sc):
     ac =  XDPActionChain()
-    ac.add("set_recv_win", recv_win = 65535)
+    ac.add("set_recv_win", recv_win = 30000)
     sc.add("tcp2", selector_op_type_t.SELECTOR_AND)
     sc.submit()
     pc = XDPPolicyChain(sc, ac)
@@ -21,15 +21,15 @@ def test_tcp2_selector(sc):
 
 def test_tcp4_selector(sc):
     ac =  XDPActionChain()
-    ac.add("set_recv_win", recv_win = 65535)
+    ac.add("set_recv_win", recv_win = 30000)
     sc.add("tcp4", selector_op_type_t.SELECTOR_AND)
     sc.submit()
     pc = XDPPolicyChain(sc, ac)
-    pc.set(0, local_addr = local[0], local_port = 60000, remote_addr = peer[0], remote_port = 5001)
+    pc.set(0, local_addr = local[0], local_port = 60003, remote_addr = peer[0], remote_port = 60000)
 
 def test_tcp_selector(sc):
     ac =  XDPActionChain()
-    ac.add("set_recv_win", recv_win = 65535)
+    ac.add("set_recv_win", recv_win = 30000)
     sc.add("tcp", selector_op_type_t.SELECTOR_AND)
     sc.submit()
     pc = XDPPolicyChain(sc, ac)
@@ -53,7 +53,7 @@ def test_rm_addaddr(sc):
 
 def len2(sc):
     ac =  XDPActionChain()
-    ac.add("set_recv_win", recv_win = 65535)
+    ac.add("set_recv_win", recv_win = 30000)
     sc.add("tcp", selector_op_type_t.SELECTOR_AND)
     sc.submit()
     pc = XDPPolicyChain(sc, ac)
@@ -61,7 +61,7 @@ def len2(sc):
 
 def len4(sc):
     ac =  XDPActionChain()
-    ac.add("set_recv_win", recv_win = 65535).add("set_recv_win", recv_win = 65535).add("set_recv_win", recv_win = 65535)
+    ac.add("set_recv_win", recv_win = 30000).add("set_recv_win", recv_win = 30000).add("set_recv_win", recv_win = 30000)
     sc.add("tcp", selector_op_type_t.SELECTOR_AND)
     sc.submit()
     pc = XDPPolicyChain(sc, ac)
@@ -69,7 +69,7 @@ def len4(sc):
 
 def len8(sc):
     ac =  XDPActionChain()
-    ac.add("set_recv_win", recv_win = 65535).add("set_recv_win", recv_win = 65535).add("set_recv_win", recv_win = 65535).add("set_recv_win", recv_win = 65535)
+    ac.add("set_recv_win", recv_win = 30000).add("set_recv_win", recv_win = 30000).add("set_recv_win", recv_win = 30000).add("set_recv_win", recv_win = 30000)
     sc.add("tcp4", selector_op_type_t.SELECTOR_OR).add("tcp4", selector_op_type_t.SELECTOR_OR).add("tcp2", selector_op_type_t.SELECTOR_OR).add("tcp", selector_op_type_t.SELECTOR_AND)
     sc.submit()
     pc = XDPPolicyChain(sc, ac)

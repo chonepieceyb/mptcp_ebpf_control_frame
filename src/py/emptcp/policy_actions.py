@@ -74,21 +74,24 @@ class RecoverAddAddr(ActionBase):
         opt_len = 0
         add_addr_opt = (30, add_addr_opt_bytes)
         opt_len = opt_len + 2 + len(add_addr_opt_bytes)   
-        dss_bytes = bytearray(copy_pkt_event.dss_opt)[2:]  # without first 2 bytes of kind and len 
-        if copy_pkt_event.dss_opt.a :
-            #8bytes
-            dss_bytes.extend(bytes(bytearray(copy_pkt_event.dss_ack)[0:8])) #little end?
-        else :
-            dss_bytes.extend(bytes(bytearray(copy_pkt_event.dss_ack)[0:4])) #little end?
-        dss_opt = (30, bytes(dss_bytes))
-        opt_len = opt_len + len(dss_bytes) + 2
+        '''
+            dss_bytes = bytearray(copy_pkt_event.dss_opt)[2:]  # without first 2 bytes of kind and len 
+            if copy_pkt_event.dss_opt.a :
+                #8bytes
+                dss_bytes.extend(bytes(bytearray(copy_pkt_event.dss_ack)[0:8])) #little end?
+            else :
+                dss_bytes.extend(bytes(bytearray(copy_pkt_event.dss_ack)[0:4])) #little end?
+            dss_opt = (30, bytes(dss_bytes))
+        
+            opt_len = opt_len + len(dss_bytes) + 2
+        '''
         #nop 
         if opt_len % 4 != 0 :
             res_opt_len = (4 - opt_len % 4) 
             for i in range(0, res_opt_len) : 
                 options.append((1,b''))                                                           
         options.append(add_addr_opt)
-        options.append(dss_opt)
+        #options.append(dss_opt)
         
         seq = socket.ntohl(copy_pkt_event.seq)
         ack = socket.ntohl(copy_pkt_event.ack_seq)
@@ -98,7 +101,7 @@ class RecoverAddAddr(ActionBase):
         return pkt
 
     def __init__(self, direction): 
-        super().__init__(direction, "recover_add_addr_action")
+        super().__init__(direction, "copy_pkt_action")
 
     def dump(self):
         '''

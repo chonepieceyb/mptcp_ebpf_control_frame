@@ -22,7 +22,7 @@ int main() {
     //make daemon 
 
     //xsk config 
-    std::string ifname = "ens33";
+    std::string ifname = "ens34";
     int queue = 0;
     std::list<XDPDesc> batch_data;
     auto xsk_conf = XSKSocketConfig();

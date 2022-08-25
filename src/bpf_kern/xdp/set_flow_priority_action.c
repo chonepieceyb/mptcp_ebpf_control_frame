@@ -148,9 +148,6 @@ int set_flow_priority_action(struct xdp_md *ctx) {
     //recompute checksum , mp_prio 4 bytes
     add_tcpopt_csum(&tcph->check, &prio_opt, sizeof(struct mp_prio));
     
-
-    bpfprintk("rm mp prio back event, %d\n",res);
-
     XDP_ACTION_POST_SEC   
 
 next_action:                          

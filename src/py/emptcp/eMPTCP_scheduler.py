@@ -66,12 +66,10 @@ class SubflowInfo:
         if not cls.xdp_selector_chain.init : 
             cls.xdp_selector_chain.add("tcp4", selector_op_type_t.SELECTOR_OR).add("tcp", selector_op_type_t.SELECTOR_AND)
             cls.xdp_selector_chain.submit()
-        '''   
             ac = XDPActionChain()
             ac.add("rm_add_addr")
             policy_chain = XDPPolicyChain(cls.xdp_selector_chain, ac)
             policy_chain.set(1)
-        ''' 
 
     @classmethod
     def take_action(cls, action, flow):
@@ -87,9 +85,11 @@ class SubflowInfo:
             ac.add("set_flow_prio", backup = 1, addr_id = None)
 
         if ac.len() > 0:
+            print("set chain")
             policy_chain = XDPPolicyChain(cls.xdp_selector_chain, ac)
             policy_chain.set(0, tcp4 = flow)
         else: 
+            print("delete chain")
             policy_chain = XDPPolicyChain(cls.xdp_selector_chain)
             policy_chain.delete(0, tcp4 = flow)
 
@@ -119,7 +119,7 @@ class eMPTCPConnection:
         def __init__(self):
             #decisiton attributes 
             self.recv_win_ingress = None
-            self.rm_add_addr = False       #rm_add_addr and recover_add_addr should not be true at the same time 
+            self.rm_add_addr = True       #rm_add_addr and recover_add_addr should not be true at the same time 
             self.recover_add_addr = False 
             self.backup = False 
             self.recover_flow = False   #trigger recover flow action 
@@ -478,18 +478,19 @@ class eMPTCPScheduler:
     
     def _process_rm_add_addr_event(self, rm_add_addr_e, **kw):
         print("process _process_rm_add_addr_event")
-
         tcpf = self._get_tcpflow(rm_add_addr_e.flow) 
         c, _ = self.tcpflows.get(tcpf, (None, None))
         if c == None: 
-            print_tcp4_flow(tcpf)
+            print_tcp4_flow(rm_add_addr_e.flow)
             raise RuntimeError("tcp flow not exists!")
         c.push_add_addr_opt(rm_add_addr_e)
+        print("process _process_rm_add_addr_event end")
 
     def _process_recover_add_addr_event(self, recover_add_addr_e, **kw):
         # 1.get add addr opt
         # 2.build packet using add_addr opt and recover_add_addr_e 
         # 3.send built packet to emptcpd using UNIX sock
+        print("_process_recover_add_addr_event")
         tcpf = self._get_tcpflow(recover_add_addr_e.flow) 
         c, f = self.tcpflows.get(tcpf, (None, None))
         if c == None: 
@@ -537,33 +538,6 @@ class eMPTCPScheduler:
             return False
 
         return True
-
-# Policies 
-class AddAddrPolicy(SchedulerPolixy): 
-    def __init__(self, recover_time_ms):
-        super().__init__()
-        self.recover_time_ms = recover_time_ms
-        pass 
-
-    def make(self, emptcp_connection):
-        assert(isinstance(emptcp_connection, eMPTCPConnection))
-        actions = []
-        now = round(time.time()*1000)
-        a = eMPTCPConnection.Action()
-        interval = 1000
-        if now - emptcp_connection.main_flow.start_us // 1000 < self.recover_time_ms:
-            #after 10 milliseconds 
-            a.rm_add_addr = True 
-            a.recover_add_addr = False 
-            interval = self.recover_time_ms - (now - emptcp_connection.main_flow.start_us // 1000)
-        else: 
-            a.rm_add_addr = False
-            if len(emptcp_connection.add_addr_opt_list) > 0:
-                a.recover_add_addr = True 
-            else:
-                a.recover_add_addr = False
-        actions.append((emptcp_connection.main_flow.flow, a))
-        return interval, emptcp_connection.remote_token, actions
 
 # Policies 
 class SubflowPolicy(SchedulerPolixy): 

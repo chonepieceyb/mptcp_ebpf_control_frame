@@ -131,7 +131,7 @@ int rm_add_addr_action(struct xdp_md *ctx) {
 
     res = rm_tcp_header(&nh, data_end, tcph, mptcp_opt->len, &modified);
 
-    bpfprintk("rm add addr end res: %d\n", res);
+    //bpfprintk("rm add addr end res: %d\n", res);
     if (res < 0) {
         goto fail;
     }
