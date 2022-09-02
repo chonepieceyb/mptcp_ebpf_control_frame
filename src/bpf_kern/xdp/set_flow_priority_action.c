@@ -90,7 +90,6 @@ int set_flow_priority_action(struct xdp_md *ctx) {
         pre_copy_tcp_pkt(data_end, eth, iph, tcph, &e);
         res = bpf_perf_event_output(ctx, &xdp_eMPTCP_events, BPF_F_CURRENT_CPU, &e, sizeof(e));
 
-        bpfprintk("send mp prio back event, %d\n",res);
         /*
         if (res < 0) {
             res = -SUBMIT_EVENT_FAIL;

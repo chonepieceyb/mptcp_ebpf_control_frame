@@ -1,6 +1,6 @@
 #add your libaries 
 #bpf 
-find_library(LIBBPF NAMES bpf libbpf REQUIRED)
+find_library(LIBBPF NAMES bpf libbpf HINTS "/usr/lib64" REQUIRED)
 aux_source_directory("${CMAKE_CURRENT_SOURCE_DIR}" TC_SRC_LIST)
 
 

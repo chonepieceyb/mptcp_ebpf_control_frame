@@ -115,7 +115,7 @@ PerfBuffer::PerfBuffer(int map_fd, S_CB &&scb, L_CB &&lcb, std::size_t page_cnt)
         lost_cb_fn = _lost_cb_fn;
     }
 
-    raw_pb = ::perf_buffer__new(map_fd, page_cnt, &PerfBuffer::_sample_cb_fn, &PerfBuffer::_lost_cb_fn, reinterpret_cast<void*>(this), nullptr); //use this ptr as ctx pointer 
+    raw_pb = ::perf_buffer__new(map_fd, page_cnt, sample_cb_fn, lost_cb_fn, reinterpret_cast<void*>(this), nullptr); //use this ptr as ctx pointer 
     
     int res = ::libbpf_get_error(raw_pb);
     if (res < 0) {
