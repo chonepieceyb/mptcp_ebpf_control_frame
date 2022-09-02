@@ -1,5 +1,4 @@
 #-*- coding:utf-8 -*-
-from sys import implementation
 from bcc import BPF
 import os
 from abc import abstractmethod

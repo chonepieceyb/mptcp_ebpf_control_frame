@@ -222,8 +222,8 @@ if __name__ == '__main__':
             #test_action_chain(selector_chain,tester)
             #test_rm_addr(selector_chain,tester)
             #test_selector_chain(selector_chain, tester)
-            #test_rm_add_addr_v1(selector_chain, tester)
-            test_recover_flow(selector_chain, tester)
+            test_rm_add_addr_v1(selector_chain, tester)
+            #test_recover_flow(selector_chain, tester)
             print("end test")  
             pass   
           except Exception as e:

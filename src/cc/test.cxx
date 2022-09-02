@@ -100,10 +100,10 @@ int main() {
 
     utils::TermSignal::regist();
 
-    std::uint32_t recv = 0;
+    //std::uint32_t recv = 0;
     while (true) {
         try {
-            recv =  xsk.recv(std::back_inserter(batch_data), batch_size);
+            xsk.recv(std::back_inserter(batch_data), batch_size);
             //process batch data
             for (auto iter = batch_data.begin(); iter != batch_data.end();) {
                 auto addr = iter->addr;

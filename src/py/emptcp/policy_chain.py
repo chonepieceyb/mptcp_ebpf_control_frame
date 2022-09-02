@@ -152,6 +152,9 @@ class ActionChain:
         self.actions = []
         self.action_chain = None 
 
+    def len(self):
+        return len(self.actions)
+
     def dump(self):
         if self.action_chain != None: 
             return self.action_chain 

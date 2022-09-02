@@ -31,6 +31,11 @@ struct copy_pkt_param_t {
 SEC("xdp")
 #endif 
 int copy_pkt_action(struct xdp_md *ctx) {
+    #ifdef DEBUG
+    INIT_DEBUG_EVENT(COPY_PKT)
+    RECORD_DEBUG_EVENTS(start)
+    #endif
+
     int res;
     int modified = 0;
     
@@ -99,6 +104,10 @@ int copy_pkt_action(struct xdp_md *ctx) {
     XDP_ACTION_POST_SEC
 
 next_action:                          
+#ifdef DEBUG
+    RECORD_DEBUG_EVENTS(end)
+    SEND_DEBUG_EVENTS
+#endif
 
 #ifdef NOBCC
     bpf_tail_call(ctx, &xdp_actions, NEXT_IDX);
@@ -116,6 +125,10 @@ fail:
         return XDP_PASS;
     }
 exit:
+    #ifdef DEBUG
+    RECORD_DEBUG_EVENTS(end)
+    SEND_DEBUG_EVENTS
+    #endif
     return XDP_PASS;
 
 }

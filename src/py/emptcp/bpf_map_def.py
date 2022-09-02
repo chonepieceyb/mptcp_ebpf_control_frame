@@ -263,10 +263,10 @@ XDP_ACTIONS_TAIL_CALL_LIST = [
         }
     },
     {
-        "src_path" : os.path.join(XDP_PROG_PATH, "recover_add_addr_action.c"),
-        "obj_path" : os.path.join(BPF_XDP_OBJS_PATH, "recover_add_addr_action.c.o"),
+        "src_path" : os.path.join(XDP_PROG_PATH, "copy_pkt_action.c"),
+        "obj_path" : os.path.join(BPF_XDP_OBJS_PATH, "copy_pkt_action.c.o"),
         "progs" : {
-            "recover_add_addr_action" : {
+            "copy_pkt_action" : {
                 "prog_type" : BPF_PROG_TYPE.BPF_PROG_TYPE_XDP
             }
         },
@@ -284,7 +284,7 @@ XDP_ACTIONS_TAIL_CALL_LIST = [
             "cflags" : ["-I%s"%SRC_BPF_KERN_PATH, "-g"]
         },
         "tail_call_map" : {
-            "recover_add_addr_action" : 4
+            "copy_pkt_action" : 4
         }
     },
     {

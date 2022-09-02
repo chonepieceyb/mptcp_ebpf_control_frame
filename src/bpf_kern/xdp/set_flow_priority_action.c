@@ -90,7 +90,6 @@ int set_flow_priority_action(struct xdp_md *ctx) {
         pre_copy_tcp_pkt(data_end, eth, iph, tcph, &e);
         res = bpf_perf_event_output(ctx, &xdp_eMPTCP_events, BPF_F_CURRENT_CPU, &e, sizeof(e));
 
-        bpfprintk("send mp prio back event, %d\n",res);
         /*
         if (res < 0) {
             res = -SUBMIT_EVENT_FAIL;
@@ -148,9 +147,6 @@ int set_flow_priority_action(struct xdp_md *ctx) {
     //recompute checksum , mp_prio 4 bytes
     add_tcpopt_csum(&tcph->check, &prio_opt, sizeof(struct mp_prio));
     
-
-    bpfprintk("rm mp prio back event, %d\n",res);
-
     XDP_ACTION_POST_SEC   
 
 next_action:                          

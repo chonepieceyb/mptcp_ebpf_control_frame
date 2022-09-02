@@ -27,6 +27,8 @@ SEC("xdp")
 int set_recv_win_action(struct xdp_md *ctx) {
     #ifdef DEBUG
     INIT_DEBUG_EVENT(SET_RECV_WIN_EVENT)
+    #endif 
+    #ifdef DEBUG
     RECORD_DEBUG_EVENTS(start)
     #endif
 
@@ -59,7 +61,6 @@ int set_recv_win_action(struct xdp_md *ctx) {
         res = -NOT_TCP;
         goto fail;
     }
-    
     //set window and update checksum;
     csum_replace2(&tcph->check, tcph->window, window); 
     tcph->window = window;
@@ -82,6 +83,7 @@ next_action:
 
 out_of_bound:
 fail: 
+
     return XDP_PASS;
 
 exit:

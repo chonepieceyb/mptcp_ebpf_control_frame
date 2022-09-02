@@ -20,11 +20,11 @@ struct {
     __uint(max_entries, XDP_MAX_METRIC_NUM);
 } xdp_metrics SEC(".maps");
 
+#endif 
+
 #ifdef DEBUG
 DEBUG_DATA_DEF_SEC
 #endif
-
-#endif 
 
 struct metric_param_t {
     __u8    pkt:1,
@@ -50,6 +50,11 @@ static __always_inline int create_metric(const struct tcp4tuple *flow) {
 SEC("xdp")
 #endif 
 int record_action(struct xdp_md *ctx) {
+#ifdef DEBUG
+    INIT_DEBUG_EVENT(RECORD)
+    RECORD_DEBUG_EVENTS(start)
+#endif
+
     int res;
     //perform per packet record and only record ingress data flow 
     XDP_POLICY_PRE_SEC
@@ -138,6 +143,10 @@ int record_action(struct xdp_md *ctx) {
     XDP_ACTION_POST_SEC   
 
 next_action:                          
+    #ifdef DEBUG
+    RECORD_DEBUG_EVENTS(end)
+    SEND_DEBUG_EVENTS
+    #endif
 
 #ifdef NOBCC
     bpf_tail_call(ctx, &xdp_actions, NEXT_IDX);
@@ -151,6 +160,10 @@ out_of_bound:
 fail:
     return XDP_PASS;
 exit:
+    #ifdef DEBUG
+    RECORD_DEBUG_EVENTS(end)
+    SEND_DEBUG_EVENTS
+    #endif
     return XDP_PASS;
 }
 
