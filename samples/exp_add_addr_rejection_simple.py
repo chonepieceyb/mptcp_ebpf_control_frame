@@ -16,10 +16,10 @@ from data_struct_def import *
 from scapy import * 
 import time 
 
-local = ["172.16.12.128", "172.16.12.129"]
+local = ["172.16.12.142", "172.16.12.143"]
 remote = ["172.16.12.131", "172.16.12.132"]
 
-INTERVAL = 100
+INTERVAL = 20
 MAIN_LOCAL = local[0]
 MAIN_REMOTE = remote[0]
 

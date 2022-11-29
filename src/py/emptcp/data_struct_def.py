@@ -145,7 +145,7 @@ class mp_dss(ct.Structure) :
         ("F", ct.c_uint16, 1), \
         ("rsv2", ct.c_uint16, 3), \
     ]
-
+'''
 class mptcp_copy_pkt_event_t(ct.Structure):
     _fields_  = [\
         ("header", eMPTCP_event_header_t),\
@@ -157,6 +157,19 @@ class mptcp_copy_pkt_event_t(ct.Structure):
         ("dss_opt", mp_dss),\
         ("dss_ack", ct.c_ubyte * 8)
     ]
+'''
+
+class mptcp_copy_pkt_event_t(ct.Structure):
+    _fields_  = [\
+        ("header", eMPTCP_event_header_t),\
+        ("flow", tcp4tuple),\
+        ("eth", ethhdr),\
+        ("window", ct.c_uint16),\
+        ("seq", ct.c_uint32),\
+        ("ack_seq", ct.c_uint32),\
+        ("ts", ct.c_ubyte * 10)
+    ]
+
 
 class rm_add_addr_event_t(ct.Structure):
     _fields_  = [\

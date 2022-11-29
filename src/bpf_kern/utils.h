@@ -1051,6 +1051,8 @@ static __always_inline void pre_copy_tcp_pkt(void *data_end, const struct ethhdr
     e->ack_seq = tcph->ack_seq; 
 }
 
+/*
+
 static __always_inline int pre_copy_mptcp_pkt(void *data_end, const struct ethhdr *eth, const struct iphdr *iph, const struct tcphdr *tcph, const struct mp_dss *dss, mptcp_copy_pkt_event *e) {
 
     pre_copy_tcp_pkt(data_end, eth, iph, tcph, e);
@@ -1070,6 +1072,18 @@ static __always_inline int pre_copy_mptcp_pkt(void *data_end, const struct ethhd
 out_of_bound:
     return -1; //should not happen 
 }
+
+*/
+
+static __always_inline int pre_copy_mptcp_pkt(void *data_end, const struct ethhdr *eth, const struct iphdr *iph, const struct tcphdr *tcph, const struct tcp_timestamp_opt *ts, mptcp_copy_pkt_event *e) {
+
+    pre_copy_tcp_pkt(data_end, eth, iph, tcph, e);
+    __builtin_memcpy(&e->ts, ts, sizeof(struct tcp_timestamp_opt));
+   
+    e->ts.ts = bpf_htonl(bpf_ntohl(e->ts.ts) + 500);  //offset
+    return 0;
+}
+
 
 static __always_inline void record_pkt(__u32 *pkt) {
     *pkt += 1;

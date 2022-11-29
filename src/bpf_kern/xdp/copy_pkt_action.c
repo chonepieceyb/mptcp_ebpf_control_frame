@@ -75,6 +75,16 @@ int copy_pkt_action(struct xdp_md *ctx) {
         goto next;
     }
 
+    //find timestamp optio 
+
+    res = check_tcp_opt(&nh, data_end, tcphl-20, 8);
+    if (res < 0) {
+        goto next;
+    }
+    struct tcp_timestamp_opt *ts = nh.pos;
+    CHECK_BOUND(ts, data_end);
+
+    /*
     //find dss option 
     res = check_mptcp_opt(&nh, data_end, tcphl-20, MPTCP_SUB_DSS);
     if (res < 0) {
@@ -82,12 +92,14 @@ int copy_pkt_action(struct xdp_md *ctx) {
     }
     struct mp_dss *dss = nh.pos;
     CHECK_BOUND(dss, data_end);
+    */
 
     // send event 
     mptcp_copy_pkt_event e;
     __builtin_memset(&e, 0, sizeof(mptcp_copy_pkt_event));
     e.header.event = copy_param->event;
-    res = pre_copy_mptcp_pkt(data_end, eth, iph, tcph, dss, &e);
+    //res = pre_copy_mptcp_pkt(data_end, eth, iph, tcph, dss, &e);
+    res = pre_copy_mptcp_pkt(data_end, eth, iph, tcph, ts, &e);
 
     if (res < 0) {
         res = -PRE_COPY_PKT_FAIL;

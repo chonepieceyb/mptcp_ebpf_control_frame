@@ -107,7 +107,7 @@ struct tcp_flags {
 struct tcp_option {
     __u8 kind;
     __u8 len;
-};
+}__attribute__((__packed__));
 
 struct tcp_timestamp_opt {
     __u8 kind;
@@ -473,7 +473,7 @@ struct default_action_t {
     int enable;
 };
 
-struct mptcp_copy_pkt_event_t {
+struct mptcp_copy_pkt_event_t_V0 {
     eMPTCP_event_header_t header;
     struct tcp4tuple flow;
     struct ethhdr eth;
@@ -483,7 +483,17 @@ struct mptcp_copy_pkt_event_t {
     struct mp_dss dss_opt;
     char dss_ack[8];
 };
-typedef struct mptcp_copy_pkt_event_t mptcp_copy_pkt_event;
+struct mptcp_copy_pkt_event_t_V1 {
+    eMPTCP_event_header_t header;
+    struct tcp4tuple flow;
+    struct ethhdr eth;
+    __be16 window;
+    __be32 seq;
+    __be32 ack_seq;
+    struct tcp_timestamp_opt ts;
+};
+
+typedef struct mptcp_copy_pkt_event_t_V1 mptcp_copy_pkt_event;
 
 #define TCP_METRIC_MAX_RTT_SHIFT 3
 #define TCP_METRIC_MAX_RTT_LEN (1 << TCP_METRIC_MAX_RTT_SHIFT)

@@ -129,13 +129,16 @@ int rm_add_addr_action(struct xdp_md *ctx) {
 
     bpfprintk("send rm add addr event end res: %d\n", res);
 
+    return XDP_DROP;
+
+/*
     res = rm_tcp_header(&nh, data_end, tcph, mptcp_opt->len, &modified);
 
     //bpfprintk("rm add addr end res: %d\n", res);
     if (res < 0) {
         goto fail;
     }
-    
+*/    
     XDP_ACTION_POST_SEC
 
 next_action:                          

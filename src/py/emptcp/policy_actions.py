@@ -71,9 +71,9 @@ class RecoverAddAddr(ActionBase):
         # 先不放 timestamp 选项试一下
         #(30,b'\x10\x07\x53\x20\xda\xef\x45\x73\x96\xf4')
         options = []
-        opt_len = 0
         add_addr_opt = (30, add_addr_opt_bytes)
-        opt_len = opt_len + 2 + len(add_addr_opt_bytes)   
+        timestamp_opt = (8, bytes(bytearray(copy_pkt_event.ts)[2:]))
+        opt_len = 2 + len(add_addr_opt_bytes)   
         '''
             dss_bytes = bytearray(copy_pkt_event.dss_opt)[2:]  # without first 2 bytes of kind and len 
             if copy_pkt_event.dss_opt.a :
@@ -90,6 +90,7 @@ class RecoverAddAddr(ActionBase):
             res_opt_len = (4 - opt_len % 4) 
             for i in range(0, res_opt_len) : 
                 options.append((1,b''))                                                           
+        #options.append(timestamp_opt)
         options.append(add_addr_opt)
         #options.append(dss_opt)
         
