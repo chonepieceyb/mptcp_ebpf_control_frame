@@ -1,8 +1,4 @@
-#add your libaries 
-#bpf 
-find_library(LIBBPF NAMES bpf libbpf HINTS "/usr/lib64" REQUIRED)
 aux_source_directory("${CMAKE_CURRENT_SOURCE_DIR}" TC_SRC_LIST)
-
 
 #compile all .o files 
 add_library(tc_egress OBJECT ${TC_SRC_LIST})

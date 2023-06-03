@@ -21,6 +21,10 @@
 #define TC_GROW_TCP_HEADER_FAIL         1017
 #define PRE_COPY_PKT_FAIL               1018
 #define UPDATE_METRIC_FAIL              1019
+#define MPTCP_MONITOR_NOEXIST           1020
+#define MPTCP_MONITOR_FULL              1021
 #define NOT_TARGET                      1
+
+
 
 #endif

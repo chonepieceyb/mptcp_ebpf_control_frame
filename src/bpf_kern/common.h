@@ -326,7 +326,7 @@ struct hdr_cursor {
 struct tcp4tuple {
     __be16	local_port;
     __be16	remote_port;
-    __be32      local_addr;
+    __be32  local_addr;
     __be32	remote_addr;
 };
 

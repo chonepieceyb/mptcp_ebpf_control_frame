@@ -37,6 +37,7 @@ public:
     
     XSKRingPair peek(std::uint32_t nb) {
         std::uint32_t idx, avail;
+	idx = 0;
         avail = xsk_ring_cons__peek(origin, nb, &idx);
         return std::make_pair(idx, avail);
     }
@@ -161,7 +162,7 @@ std::uint32_t XSKConsRing<Consumer>::consume(OutputIt out, std::uint32_t size) {
     std::uint32_t idx,avail;
     std::tie(idx, avail) = peek(size);
     if (avail == 0) return 0;
-    for (auto i = 0; i< avail; i++) {
+    for (std::uint32_t i = 0; i< avail; i++) {
         Consumer::consume(origin, out++, idx++);
     }
     release(avail);

@@ -23,7 +23,7 @@ Umem::Umem(const UmemConfig &config) : _conf(config) {
     //add frames
     FrameAllocator::FrameContainer frames;
     auto out = std::back_inserter(frames);
-    for (auto i = 0; i < _conf.frames; i++) {
+    for (std::uint32_t i = 0; i < _conf.frames; i++) {
         *out++ = i * _conf.frame_size;
     }
     _alloc = FrameAllocUPtr(new FrameAllocator(std::move(frames)));

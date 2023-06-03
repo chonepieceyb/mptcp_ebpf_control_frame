@@ -1,6 +1,7 @@
 #ifndef EMPTCP_UTILS_H
 #define EMPTCP_UTILS_H
 
+#include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <linux/ip.h>
@@ -1108,5 +1109,4 @@ struct {                        \
     bpf_perf_event_output(ctx, &debug_events, BPF_F_CURRENT_CPU, &debug_time_event, sizeof(struct debug_time_event_t)); \
 
 #endif 
-
 #endif

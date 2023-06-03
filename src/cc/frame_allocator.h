@@ -112,7 +112,7 @@ void FrameAllocator::alloc(OutputIt out, std::uint32_t num) {
     if (_free_frames.size() < num) {
         throw errors::InvalidFrame();
     }
-    for (auto i = 0; i < num; i++) {
+    for (std::uint32_t i = 0; i < num; i++) {
         *out++ = _free_frames.back();
         _free_frames.pop_back();
     }
