@@ -323,6 +323,9 @@ struct hdr_cursor {
 
 #define MAX_SUBFLOW_NUM 200000
 /*tcp 4 tuple key 96bytes, network byte order*/
+
+#ifndef TCPTUPLE
+#define TCPTUPLE
 struct tcp4tuple {
     __be16	local_port;
     __be16	remote_port;
@@ -335,6 +338,7 @@ struct tcp2tuple {
     __be32      local_addr;
     __be32      remote_addr;
 };
+#endif 
 
 typedef __u64 action_chain_id_t;
 

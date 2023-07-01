@@ -100,10 +100,10 @@ def draw_wnd(exp, df1, df2):
     # 折线 eMPTCP
     plt.plot(time_ax1, snd_cwnd1, lw=10, zorder=2,  label="snd_cwnd1",linestyle="solid",color="yellow",alpha=.99)
     #ax2.plot(time_ax1, snd_wnd1, lw=10, zorder=2,  label="snd_wnd1",linestyle='dotted',color="red",alpha=.99)
-    plt.plot(time_ax1, snd_ssthresh1, lw=10, zorder=2,  label="snd_ssthresh1",linestyle="dashed",color="red",alpha=.99)
+    #plt.plot(time_ax1, snd_ssthresh1, lw=10, zorder=2,  label="snd_ssthresh1",linestyle="dashed",color="red",alpha=.99)
     plt.plot(time_ax2, snd_cwnd2, lw=10, zorder=2,  label="snd_cwnd2",linestyle="solid",color="blue",alpha=.99)
     #ax2.plot(time_ax2, snd_wnd2, lw=10, zorder=2,  label="snd_wnd2",linestyle='dotted',color="green",alpha=.99)
-    plt.plot(time_ax2, snd_ssthresh2, lw=10, zorder=2,  label="snd_ssthresh2",linestyle='dashed',color="grey",alpha=.99)
+    #plt.plot(time_ax2, snd_ssthresh2, lw=10, zorder=2,  label="snd_ssthresh2",linestyle='dashed',color="grey",alpha=.99)
 
     # 折线 MPTCP
     #plt.plot(DRAW, TCP, lw=10, zorder=2,  label="eMPTCP", marker="*",markersize=30,color="green",alpha=.99)

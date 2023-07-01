@@ -51,6 +51,22 @@ else {
     return filter_exp 
 
 bpf_program = '''
+
+struct bpf_rb_root {
+	__u64 :64;
+	__u64 :64;
+} __attribute__((aligned(8)));
+
+struct bpf_rb_node {
+	__u64 :64;
+	__u64 :64;
+	__u64 :64;
+} __attribute__((aligned(8)));
+
+struct bpf_refcount {
+	__u32 :32;
+} __attribute__((aligned(4)));
+
 #include <net/sock.h>
 #include <net/tcp.h> 
 
@@ -68,7 +84,6 @@ struct tcp_rcv_event_t {
 };
 
 BPF_PERF_OUTPUT(tcp_rcv_events);
-
 
 int kprobe__tcp_rcv_established(struct pt_regs *ctx, struct sock *sk, struct sk_buff *skb) {
     struct tcp_sock * __tcpsock = (struct tcp_sock *)sk;
@@ -140,8 +155,8 @@ def perf_output_callback(cpu, data, size):
 if __name__ == '__main__': 
     import sys
     #test filter 
-    sub1 = filter_and(local_addr_filter("172.16.12.128"), remote_addr_filter("172.16.12.131"))
-    sub2 = filter_and(local_addr_filter("172.16.12.129"), remote_addr_filter("172.16.12.132"))
+    sub1 = filter_and(local_addr_filter("192.168.122.216"), remote_addr_filter("192.168.122.46"))
+    sub2 = filter_and(local_addr_filter("192.168.122.143"), remote_addr_filter("192.168.122.70"))
     filter_exp = generate_filter((sub1,1), (sub2,2))
     
     bpf_program = bpf_program.replace("FILTER", filter_exp)

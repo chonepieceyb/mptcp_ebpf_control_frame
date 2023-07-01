@@ -4,22 +4,21 @@
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 
-
 #define MPTCP_SUBFLOW_MAX_SHIFT 3
 #define MPTCP_SUBFLOW_MAX (1 << MPTCP_SUBFLOW_MAX_SHIFT)
 #define MAX_MPTCP_CONN_NUM 20000
 #define AF_INET6 10
 
+#ifndef TCPTUPLE
+#define TCPTUPLE
 struct tcp4tuple {
 	__be16	local_port;
 	__be16	remote_port;
 	__be32  local_addr;
 	__be32	remote_addr;
 };
+#endif 
 
-struct mptcp_sched_policy {
-    
-};
 /*the update process of BPF_MAP_TYPE_HASH will hold the bucket lock
 * thus we use hashtab to enable locking functionality which means
 * for locking calling bpf_map_update_elem with flag BPF_NOEXIST
@@ -42,6 +41,16 @@ struct mptcp_conn_meta {
 	int num;
 	struct tcp4tuple connlist[MPTCP_SUBFLOW_MAX];
 	void*			 socklist[MPTCP_SUBFLOW_MAX];
+};
+
+struct emptcp_sched_data {
+	void *sk;
+	bool scheduled;
+};
+
+struct emptcp_sched_policy {
+    struct emptcp_sched_data subflows[MPTCP_SUBFLOW_MAX];
+	int snd_burst;
 };
 
 #endif 

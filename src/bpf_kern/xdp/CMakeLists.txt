@@ -1,6 +1,5 @@
 #add your libaries 
 #bpf 
-find_library(LIBBPF NAMES bpf libbpf HINTS "/usr/lib64" REQUIRED)
 aux_source_directory("${CMAKE_CURRENT_SOURCE_DIR}" XDP_SRC_LIST)
 
 #compile all .o files 

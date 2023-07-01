@@ -14,5 +14,9 @@ TC_EGRESS_PROG_PATH = os.path.join(SRC_BPF_KERN_PATH, "tc_egress")
 BPF_OBJS_PATH = os.path.join(PROJECT_ROOT_PATH, "install", "bpf_kern_objs")
 BPF_TC_EGRESS_OBJS_PATH = os.path.join(BPF_OBJS_PATH, "tc_egress")
 BPF_XDP_OBJS_PATH = os.path.join(BPF_OBJS_PATH, "xdp")
+BPF_KPROBE_OBJS_PATH = os.path.join(BPF_OBJS_PATH, "kprobe")
+BPF_STOPS_OBJS_PATH = os.path.join(BPF_OBJS_PATH, "struct_ops")
 
 BPF_VFS_PREFIX = "/sys/fs/bpf"
+LINUX_SRC_DIR = os.path.join(PROJECT_ROOT_PATH, "linux")
+LIBBPF_SO_PATH = os.path.join(LINUX_SRC_DIR, 'tools', 'lib', 'bpf', 'libbpf.so')

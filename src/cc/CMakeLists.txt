@@ -9,7 +9,7 @@ set(EXECUTABLE_OUTPUT_PATH "${BIN_TARGETS}")
 #add your libaries 
 #libxdp   
 find_library(LIBXDP NAMES xdp  HINTS "/usr/local/lib" REQUIRED)
-find_library(LIBBPF NAMES bpf HINTS "/usr/lib64" REQUIRED)
+find_library(LIBBPF NAMES bpf HINTS "${LINUX_PATH}/tools/lib/bpf" REQUIRED)
 include_directories("${PROJECT_SOURCE_DIR}"  "/usr/local/include/xdp" "/home/chonepieceyb/CODING/Src/xdp-tools/headers")
 
 aux_source_directory(${PROJECT_SOURCE_DIR} SRC_LIST)
