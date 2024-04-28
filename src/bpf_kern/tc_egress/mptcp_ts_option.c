@@ -59,7 +59,7 @@ int add_mptcp_ts_option(struct __sk_buff *ctx) {
     
     if (res < 0) {
         res = -NOT_TCP;
-        goto fail;
+        goto exit;
     }
 
     //if we check mptcp syn_ack flags, mark this flow we will add timestamp option
@@ -97,7 +97,7 @@ int add_mptcp_ts_option(struct __sk_buff *ctx) {
     res = tc_grow_tcp_header(ctx, &nh, tcp_opt_len, sizeof(mp_ts), &modified);  //nh.pos set to the end 
     if (res < 0) {
         res = -TC_GROW_TCP_HEADER_FAIL;
-        goto fail;;
+        goto fail;
     }
     
     data = (void *)(__u64)(ctx->data);
@@ -128,6 +128,7 @@ int add_mptcp_ts_option(struct __sk_buff *ctx) {
 
 out_of_bound:
 fail: 
+    log_error("fail, res %d", res);
     if (modified) {
         return TC_ACT_SHOT;
     } else {

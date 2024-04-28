@@ -510,3 +510,38 @@ out_of_bound:
 unsupported:
 	return -EINVAL;
 }
+
+static __always_inline void set_tcp_nop2(__u16 *dst) {
+    *dst = 0x0101;
+}
+
+static __always_inline int rm_tcp_header(struct hdr_cursor *nh, void *data_end, struct tcphdr *tcph, __u16 size, int *modified) {
+    //set option to nop and update checksum 
+    if ((size & 0x1) != 0) {
+        //size % 2 != 0
+        *modified = 0;
+        goto fail;
+    }
+
+    __u16 *pkt = nh->pos;
+    __u16 s2 = size >> 1;  
+
+    *modified = 1;
+#pragma unroll 20
+    for (int i = 0; i < 20; i++) {
+        if (i >= s2) break;
+        CHECK_BOUND(pkt, data_end);
+        __u16 old = *pkt;
+        //set nop
+        set_tcp_nop2(pkt);
+        csum_replace2(&tcph->check, old, 0x0101);
+        pkt++;
+    }
+
+    nh->pos = pkt;
+    return 0;
+
+out_of_bound:
+fail:
+    return -1;  
+}

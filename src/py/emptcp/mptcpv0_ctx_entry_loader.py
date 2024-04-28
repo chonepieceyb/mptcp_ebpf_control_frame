@@ -14,11 +14,9 @@ XDP_ENTRY_PROG_NAME = "xdp_ctx_entry"
 XDP_IDX0_OBJ_PATH = os.path.join(BPF_XDP_OBJS_PATH, 'parse_mptcp_ts.c.o')
 XDP_IDX0_PROG_NAME = "parse_mptcp_ts"
 
-PROG_MAP_NAME = ""
-
 def load_attach_tc():
-    dump_all_if_config()
-    interfaces = read_if_config()
+    #dump_all_if_config()
+    #interfaces = read_if_config()
     with BPFObject(TC_OBJ_PATH) as bpf_obj:
         bpf_obj.load()
         bpf_prog = bpf_obj.get_prog(TC_PROG_NAME)
@@ -26,8 +24,8 @@ def load_attach_tc():
             print("attach tc success")
 
 def load_attach_xdp():
-    dump_all_if_config()
-    interfaces = read_if_config()
+    #dump_all_if_config()
+    #interfaces = read_if_config()
     with BPFObject(XDP_ENTRY_OBJ_PATH) as xdp_entry, \
          BPFObject(XDP_IDX0_OBJ_PATH) as idx0_obj:
         xdp_entry.load()
@@ -49,7 +47,7 @@ def load_all():
         clear()
 
 def clear():
-    interfaces = read_if_config()
+    #interfaces = read_if_config()
     for interface in interfaces:
         print("dettach tc eBPF on %d", interface)
         BPFTCEgress.destory_egress_hook(if_nametoindex(interface))

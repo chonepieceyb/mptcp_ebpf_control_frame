@@ -10,8 +10,8 @@ TC_MPTCP_TS_OBJ_PATH = os.path.join(BPF_TC_EGRESS_OBJS_PATH, 'mptcp_ts_option.c.
 TC_MPTCP_TS_PROG_NAME = "add_mptcp_ts_option"
 
 def load_attach_tc():
-    dump_all_if_config()
-    interfaces = read_if_config()
+    #dump_all_if_config()
+    #interfaces = read_if_config()
     with BPFObject(TC_MPTCP_TS_OBJ_PATH) as mpts_obj:
         mpts_obj.load()
         bpf_prog = mpts_obj.get_prog(TC_MPTCP_TS_PROG_NAME)
