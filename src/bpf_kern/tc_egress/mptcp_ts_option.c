@@ -17,6 +17,32 @@ struct mp_timestamp {
     __be32   timestamp_us;
 } __attribute__((__packed__));
 
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__type(key, struct tcp4tuple);
+	__type(value, int);
+	__uint(max_entries, MAX_MPTCP_TCP_CONN_NUM);
+} mptcp_ts_mark_map SEC(".maps");
+
+static __always_inline void mark_add_mptcp_ts_opt(struct __sk_buff *ctx, void *data_end, int tcphl, const struct iphdr *iph, const struct tcphdr *tcph, void *old_pos) 
+{
+    __u32 mp_opt_flags = 0;
+    int res;
+    mp_opt_flags |= MPTCP_SUB_JOIN_FLAG;
+    mp_opt_flags |= MPTCP_SUB_CAPABLE_FLAG;
+    struct hdr_cursor nh;
+    nh.pos = old_pos;
+    res = check_mptcp_opts(&nh, data_end, tcphl - 20, mp_opt_flags);
+    if (res != 0) {
+        return;
+    }
+    struct tcp4tuple flow_key;
+    __builtin_memset(&flow_key, 0, sizeof(flow_key));
+    get_tcp4tuple_out(iph, tcph, &flow_key);
+    int val = 1; 
+    bpf_map_update_elem(&mptcp_ts_mark_map, &flow_key, &val, 0);
+}
+
 SEC("tc")
 int add_mptcp_ts_option(struct __sk_buff *ctx) {
     void *data = (void *)(__u64)(ctx->data);
@@ -36,8 +62,26 @@ int add_mptcp_ts_option(struct __sk_buff *ctx) {
         goto fail;
     }
 
+    //if we check mptcp syn_ack flags, mark this flow we will add timestamp option
+    if (tcph->ack && tcph->syn) {
+        mark_add_mptcp_ts_opt(ctx, data_end, tcphl, iph, tcph, nh.pos);
+        goto exit;
+    }
+
     //only work for data pkt
     if (!(tcph->ack && !tcph->syn)) {
+        goto exit;
+    }
+
+    /*check ifwe need to add tsoption*/
+    struct tcp4tuple flow_key;
+    __builtin_memset(&flow_key, 0, sizeof(flow_key));
+    get_tcp4tuple_out(iph, tcph, &flow_key);
+    int *val = bpf_map_lookup_elem(&mptcp_ts_mark_map, &flow_key);
+    if (val == NULL) {
+        goto exit;
+    }
+    if (*val != 1) {
         goto exit;
     }
 

@@ -17,7 +17,11 @@ static __always_inline int handle_mpjoin_event(struct __sk_buff *ctx, const stru
         log_debug("failed to get key from  token");
         return -1;
     }
-    return bpf_map_update_elem(&mptcp_subflow_key_map, &flow_key, local_key_p, 1);
+    struct mptcp_subflow_est_info est_info; 
+	__builtin_memset(&est_info, 0, sizeof(est_info));
+    est_info.mptcp_loc_key = *local_key_p;
+    est_info.is_meta = 0;
+    return bpf_map_update_elem(&mptcp_subflow_key_map, &flow_key, &est_info, 1);
 }
 
 SEC("tc")
@@ -70,7 +74,6 @@ int tc_ctx_entry(struct __sk_buff *ctx) {
 
     if (opt->sub != MPTCP_SUB_JOIN) {
        goto exit;
-       
     }
 
     struct mp_join *mpj = (struct mp_join*)(opt);

@@ -13,11 +13,6 @@ struct mptcp_subflow_est_info {
 	u16 is_meta;
 };
 
-struct policy_chain_ctx {
-	u8 idx_next;
-	u8 prog_ids [POLICY_CHAIN_MAX];
-};
-
 struct emptcp_ctx {
 	u64 mptcp_loc_key;
 	struct tcp4tuple tcp4;

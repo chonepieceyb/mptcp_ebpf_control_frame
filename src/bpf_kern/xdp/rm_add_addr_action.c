@@ -170,4 +170,4 @@ exit:
 }
 #ifdef NOBCC
 char _license[] SEC("license") = "GPL";
-#endif 
+#endif

@@ -69,13 +69,16 @@ int BPF_KPROBE(full_mesh_new_session_handler, struct sock *meta_sk)
 	/*a new mptcp connection is created*/
 	struct mptcp_cb *mpcb = KPROBE_READ(tcp_sk(meta_sk)->mpcb);
 	struct tcp4tuple flow_key;
+	struct mptcp_subflow_est_info est_info; 
 	__builtin_memset(&flow_key, 0, sizeof(flow_key));
+	__builtin_memset(&est_info, 0, sizeof(est_info));
 	copy_subflow_4_tuple(&flow_key, meta_sk);
-	u64 mptcp_loc_key = KPROBE_READ(mpcb->mptcp_loc_key);
+	est_info.mptcp_loc_key = KPROBE_READ(mpcb->mptcp_loc_key);
+	est_info.is_meta = 1;
 	u32 mptcp_rem_token =  KPROBE_READ(mpcb->mptcp_rem_token);
 	bpf_printk("mptcp rem token %u\n", mptcp_rem_token);
-	bpf_map_update_elem(&mptcp_token_key_map, &mptcp_rem_token, &mptcp_loc_key, 1);
-	bpf_map_update_elem(&mptcp_subflow_key_map, &flow_key, &mptcp_loc_key, 1);  //BPF_NOEXIST
+	bpf_map_update_elem(&mptcp_token_key_map, &mptcp_rem_token, &est_info.mptcp_loc_key , 1);
+	bpf_map_update_elem(&mptcp_subflow_key_map, &flow_key, &est_info, 1);  //BPF_NOEXIST
 	return 0;
 }
 

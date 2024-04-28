@@ -15,7 +15,7 @@ struct mp_timestamp {
 } __attribute__((__packed__));
 
 SEC("xdp")
-int parse_mptcp_ts(struct xdp_buff *ctx) {
+int parse_mptcp_ts(struct xdp_md *ctx) {
     int res;
     int modified = 0;
     

@@ -10,7 +10,7 @@
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, struct tcp4tuple);
-	__type(value, u64);
+	__type(value, struct mptcp_subflow_est_info);
 	__uint(max_entries, MAX_MPTCP_TCP_CONN_NUM);
 	__uint(pinning, 1);
 } mptcp_subflow_key_map SEC(".maps");
@@ -21,7 +21,7 @@ struct {
 	__type(value, u64);
 	__uint(max_entries, MAX_MPTCP_TCP_CONN_NUM);
 	__uint(pinning, 1);
-}  mptcp_token_key_map SEC(".maps");
+} mptcp_token_key_map SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -30,5 +30,13 @@ struct {
 	__uint(max_entries,1);
 	__uint(pinning, 1);
 } emptcp_ctx_map SEC(".maps"); 
+
+struct {
+    __uint(type, BPF_MAP_TYPE_PROG_ARRAY);
+    __type(key, int);
+    __type(value, int);
+    __uint(max_entries, POLICY_CHAIN_MAX);
+    __uint(pinning, 1);
+} xdp_actions_new SEC(".maps");
 
 #endif 
