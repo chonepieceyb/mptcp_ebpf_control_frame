@@ -1,4 +1,25 @@
 from libbpf import * 
+from socket import if_nametoindex
+
+def init_bpf_opts(opt_type):
+    opt = opt_type()
+    memset(opt, 0)
+    if hasattr(opt, "sz"):
+        setattr(opt, "sz", ct.sizeof(opt))
+    return opt
+
+def create_bpf_opts(opt_type, **kw):
+    opt = init_bpf_opts(opt_type)
+    for key, value in kw.items():
+        setattr(opt, key, value)
+    return opt
+
+def to_void_p(obj):
+    return ct.cast(ct.byref(obj), ct.c_void_p)
+
+def detach_struct_ops(obj, map_name):
+    key = ct.c_int(0)
+    bpf_map_delete_elem(bpf_map__fd(obj.get_map(map_name)), ct.byref(key))
 
 class BPFObject:
     def __init__(self, obj_path):
@@ -43,6 +64,55 @@ class BPFObject:
     def get_map(self, name):
         return bpf_object__find_map_by_name(self.obj, name)
 
+#attach program to TC interfaces
+class BPFTCEgress: 
+    def __init__(self, interfaces, prog_fd):
+        if not isinstance(interfaces, list):
+            self.try_interfaces = [interfaces]
+        else:
+            self.try_interfaces = interfaces 
+        self.attach_prog_fd = prog_fd
+        self.egress_hooks = []
+        self.created_interfaces= []
+
+    @classmethod
+    def create_egress_hook(cls, ifindex): 
+        hook = create_bpf_opts(bpf_tc_hook, ifindex = ifindex, attach_point = BPF_TC_ATTACH_POINT.BPF_TC_INGRESS | BPF_TC_ATTACH_POINT.BPF_TC_EGRESS)
+        return bpf_tc_hook_create(hook)
+    
+    @classmethod 
+    def destory_egress_hook(cls, ifindex): 
+        hook = create_bpf_opts(bpf_tc_hook, ifindex = ifindex, attach_point = BPF_TC_ATTACH_POINT.BPF_TC_INGRESS | BPF_TC_ATTACH_POINT.BPF_TC_EGRESS)
+        try: 
+            bpf_tc_hook_destroy(hook)
+        except:
+            pass 
+        
+    def __destory_hooks(self):
+        if len(self.created_interfaces) == len(self.try_interfaces):
+            #all success 
+            return 
+        for interface in self.created_interfaces: 
+            BPFTCEgress.destory_egress_hook(if_nametoindex(interface))
+            print("destory tc hook of %s"%interface)
+    
+    def __enter__(self):
+        for interface in self.try_interfaces: 
+            ifindex = if_nametoindex(interface)
+            BPFTCEgress.create_egress_hook(ifindex)
+            self.created_interfaces.append(interface)
+            egress_hook = create_bpf_opts(bpf_tc_hook, ifindex = ifindex, attach_point = BPF_TC_ATTACH_POINT.BPF_TC_EGRESS)
+            opts = create_bpf_opts(bpf_tc_opts, prog_fd = self.attach_prog_fd)
+            bpf_tc_attach(egress_hook, opts)
+            
+        
+    def __exit__(self, type, value, trace):
+        if type != None: 
+            print("type:", type)
+            print("value:", value)
+            print("trace:", trace)
+        self.__destory_hooks()
+    
 class BPFLink:
     def __init__(self, attach_func, *args):
         #attach_func should raise an libbpf_error in erro and return an object of bpf_link
@@ -133,24 +203,3 @@ class PerfBuffer:
 
     def poll(self, timeout_ms = 1): 
         lib.perf_buffer__poll(self.pb, ct.c_int(timeout_ms))
-
-
-def init_bpf_opts(opt_type):
-    opt = opt_type()
-    memset(opt, 0)
-    if hasattr(opt, "sz"):
-        setattr(opt, "sz", ct.sizeof(opt))
-    return opt
-
-def create_bpf_opts(opt_type, **kw):
-    opt = init_bpf_opts(opt_type)
-    for key, value in kw.items():
-        setattr(opt, key, value)
-    return opt
-
-def to_void_p(obj):
-    return ct.cast(ct.byref(obj), ct.c_void_p)
-
-def detach_struct_ops(obj, map_name):
-    key = ct.c_int(0)
-    bpf_map_delete_elem(bpf_map__fd(obj.get_map(map_name)), ct.byref(key))

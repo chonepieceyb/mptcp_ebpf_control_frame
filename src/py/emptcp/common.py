@@ -19,4 +19,5 @@ BPF_STOPS_OBJS_PATH = os.path.join(BPF_OBJS_PATH, "struct_ops")
 
 BPF_VFS_PREFIX = "/sys/fs/bpf"
 LINUX_SRC_DIR = os.path.join(PROJECT_ROOT_PATH, "linux")
-LIBBPF_SO_PATH = os.path.join(LINUX_SRC_DIR, 'tools', 'lib', 'bpf', 'libbpf.so')
+#LIBBPF_SO_PATH = os.path.join(LINUX_SRC_DIR, 'tools', 'lib', 'bpf', 'libbpf.so')
+LIBBPF_SO_PATH = os.path.join('/usr/lib64/libbpf.so')

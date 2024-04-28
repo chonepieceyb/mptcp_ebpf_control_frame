@@ -133,6 +133,12 @@ class BPF_MAP_UPDATE_ELEM_FLAG(IntFlag):
     BPF_EXIST = 2
     BPF_F_LOCK  = 4
 
+class bpf_link_fd(ct.Structure):
+    _fields_  = [\
+        ("link", ct.c_void_p),
+        ("fd", ct.c_int)
+    ]
+
 # funcs 
 lib = ct.CDLL(LIBBPF_SO_PATH, use_errno = True)
 
@@ -219,6 +225,9 @@ lib.bpf_xdp_detach.argtypes = [ct.c_int, ct.c_uint32, ct.c_void_p]
 
 lib.bpf_link__disconnect.restype = None 
 lib.bpf_link__disconnect.argtypes = [ct.c_void_p]
+
+lib.bpf_link__fd.restype = ct.c_int 
+lib.bpf_link__fd.argtypes = [ct.c_void_p]
 
 lib.bpf_link__destroy.restype = ct.c_int  
 lib.bpf_link__destroy.argtypes = [ct.c_void_p]
@@ -647,6 +656,13 @@ def bpf_prog_test_run_opts(prog_fd, opts):
 
 def memset(ct_obj, v):
     ct.memset(ct.byref(ct_obj), ct.c_int(v), ct.sizeof(ct_obj))
+
+#for old verison bpf_link
+
+def bpf_link__fd(bpf_link):
+    res = lib.bpf_link__fd(bpf_link)
+    check_libpfres("bpf_link__fd failed", res)
+    return res
 
 # testing 
 if __name__ == '__main__' : 
